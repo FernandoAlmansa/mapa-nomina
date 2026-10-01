@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa de nómina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --papel: #e9edf0;
+    --hoja: #fbfcfc;
+    --tinta: #1a2632;
+    --tenue: #5b6875;
+    --linea: #c9d1d8;
+    --acento: #2a5d8f;
+    --rt: #8a5300;   --rt-f: #fbebcc;
+    --crea: #2d6a3e; --crea-f: #dff0e3;
+    --elim: #972f2f; --elim-f: #f7e0e0;
+    --lee: #36598a;  --lee-f: #e0e8f4;
+    --mod: #5a4890;  --mod-f: #e8e4f4;
+    --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--papel); color: var(--tinta); font: 15px/1.5 var(--sans); }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+  /* Barra superior */
+  .barra { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem; padding: .75rem 1.5rem;
+           background: var(--tinta); color: #e9eef3; }
+  .barra h1 { font-size: 1rem; font-weight: 600; margin: 0 .5rem 0 0; letter-spacing: .01em; }
+  .barra select, .barra .btn { background: #2a3a4a; border: 1px solid #3d5063; color: #e9eef3; border-radius: 4px; padding: .3rem .6rem; }
+  .barra .fuente { font-size: .85rem; color: #a9b7c4; }
+  .barra .derecha { margin-left: auto; display: flex; gap: .5rem; align-items: center; font-size: .85rem; }
+  .btn { cursor: pointer; border-radius: 4px; padding: .35rem .75rem; border: 1px solid var(--linea); background: var(--hoja); }
+  .btn.primario { background: var(--acento); border-color: var(--acento); color: #fff; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Buscador */
+  .busqueda { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: end; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--linea); background: var(--hoja); }
+  .busqueda label { display: grid; gap: .2rem; font-size: .8rem; color: var(--tenue); }
+  .busqueda input[type=search] { font: 500 1.35rem var(--mono); width: 12ch; padding: .3rem .5rem; border: 1px solid var(--linea); border-radius: 4px; text-transform: uppercase; }
+  .busqueda input[type=date], .busqueda select { padding: .4rem .5rem; border: 1px solid var(--linea); border-radius: 4px; background: #fff; }
+  .busqueda .check { display: flex; align-items: center; gap: .4rem; font-size: .85rem; color: var(--tinta); }
+
+  main { display: grid; grid-template-columns: minmax(260px, 320px) 1fr; gap: 0; min-height: 60vh; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+  /* Ficha */
+  .ficha { padding: 1.5rem; border-right: 1px solid var(--linea); }
+  .ficha h2 { font: 500 2.4rem/1 var(--mono); margin: 0 0 .25rem; }
+  .ficha .texto { margin: 0 0 1.25rem; color: var(--tenue); }
+  .ficha dl { margin: 0; display: grid; gap: .9rem; }
+  .ficha dt { font-size: .8rem; color: var(--tenue); }
+  .ficha dd { margin: .15rem 0 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .cc { font: .85rem var(--mono); padding: .05rem .4rem; border: 1px solid var(--linea); border-radius: 3px; background: #fff; cursor: pointer; }
+  .cc:hover { border-color: var(--acento); }
+  .ficha .acciones { margin-top: 1.5rem; display: grid; gap: .5rem; }
+
+  /* Recorrido */
+  .recorrido { padding: 1.25rem 1.5rem 3rem; min-width: 0; }
+  .recorrido > p.resumen { margin: 0 0 1rem; color: var(--tenue); font-size: .9rem; }
+  ol.traza { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--linea); }
+  .paso { position: relative; margin: 0 0 .9rem; padding: .7rem 1rem .8rem 1.25rem; background: var(--hoja); border: 1px solid var(--linea); border-left: 0; border-radius: 0 6px 6px 0; }
+  .paso::before { content: ''; position: absolute; left: -7px; top: 1rem; width: 12px; height: 12px; border-radius: 50%; background: var(--papel); border: 2px solid var(--tenue); }
+  .paso.t-crea::before { border-color: var(--crea); background: var(--crea-f); }
+  .paso.t-lee::before { border-color: var(--lee); }
+  .paso.entrada-rt { border-color: var(--rt); box-shadow: inset 4px 0 0 var(--rt); }
+  .paso.entrada-rt::before { background: var(--rt); border-color: var(--rt); }
+  .marca-rt { display: inline-block; font-size: .8rem; font-weight: 600; color: var(--rt); margin-bottom: .25rem; }
+  .cab { display: flex; flex-wrap: wrap; gap: .25rem .75rem; align-items: baseline; }
+  .num { font: .8rem var(--mono); color: var(--tenue); }
+  .ruta { font: .82rem var(--mono); color: var(--tenue); }
+  .ruta b { color: var(--tinta); font-weight: 500; }
+  .func { font: 500 .95rem var(--mono); }
+  .comentario { color: var(--tenue); font-size: .88rem; }
+  .conds { display: flex; flex-wrap: wrap; gap: .3rem; margin: .35rem 0 0; }
+  .cond { font-size: .78rem; padding: .05rem .45rem; border-radius: 10px; background: #e3e8ec; color: #3a4754; }
+  .cond.no { background: #eadfd2; }
+  .que { margin: .5rem 0 0; font-size: .92rem; }
+  .ef { display: inline-block; font-size: .8rem; padding: .05rem .45rem; border-radius: 3px; margin: .15rem .25rem 0 0; background: #e6eaee; }
+  .ef.rt { background: var(--rt-f); color: var(--rt); font-weight: 600; }
+  .ef.crea { background: var(--crea-f); color: var(--crea); }
+  .ef.elim { background: var(--elim-f); color: var(--elim); }
+  .ef.mod { background: var(--mod-f); color: var(--mod); }
+  .ef.lee { background: var(--lee-f); color: var(--lee); }
+  .alts { margin: .5rem 0 0; display: grid; gap: .3rem; }
+  .alt { display: grid; grid-template-columns: minmax(0, 15rem) 1fr; gap: .75rem; font-size: .85rem; }
+  @media (max-width: 640px) { .alt { grid-template-columns: 1fr; gap: .1rem; } }
+  .alt .c { color: var(--tenue); }
+  code, pre { font-family: var(--mono); font-size: .84rem; }
+  .alt code { white-space: pre-wrap; word-break: break-word; }
+  .sub { margin: .2rem 0 0 1rem; padding-left: .6rem; border-left: 2px dotted var(--linea); }
+  details { margin-top: .45rem; }
+  summary { cursor: pointer; font-size: .82rem; color: var(--acento); }
+  pre.regla { margin: .4rem 0 0; padding: .6rem .75rem; background: #f1f4f6; border-radius: 4px; overflow-x: auto; line-height: 1.4; }
+
+  .vacio { padding: 3rem 1.5rem; max-width: 60ch; }
+  .vacio h2 { font-size: 1.3rem; margin: 0 0 .5rem; }
+  .vacio p { color: var(--tenue); }
+
+  dialog { border: 1px solid var(--linea); border-radius: 8px; padding: 1.25rem 1.5rem; max-width: 560px; width: calc(100% - 2rem); color: var(--tinta); }
+  dialog::backdrop { background: rgba(26, 38, 50, .45); }
+  dialog h2 { margin: 0 0 .75rem; font-size: 1.15rem; }
+  dialog label { display: grid; gap: .25rem; margin: 0 0 .8rem; font-size: .88rem; }
+  dialog input[type=text], dialog input[type=email] { padding: .4rem .5rem; border: 1px solid var(--linea); border-radius: 4px; }
+  dialog .pie { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; flex-wrap: wrap; }
+  .nota { font-size: .85rem; color: var(--tenue); }
+  .estado-carga { font-size: .88rem; margin: .5rem 0; padding: .5rem .75rem; border-radius: 4px; background: #eef2f5; }
+  .estado-carga.error { background: var(--elim-f); color: var(--elim); }
+  .estado-carga ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+
+  .aviso-flotante { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--tinta); color: #fff; padding: .5rem 1rem; border-radius: 4px; font-size: .9rem; }
+  @media (prefers-reduced-motion: no-preference) { details[open] > :not(summary) { animation: abrir .15s ease-out; } }
+  @keyframes abrir { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+<header class="barra">
+  <h1>Mapa de nómina</h1>
+  <select id="cliente" aria-label="Cliente" hidden></select>
+  <span class="fuente" id="fuente">Sin datos cargados</span>
+  <div class="derecha">
+    <span id="usuario"></span>
+    <button class="btn" id="btn-ingresar" hidden>Ingresar</button>
+    <button class="btn" id="btn-salir" hidden>Salir</button>
+    <button class="btn" id="btn-cargar">Cargar archivos</button>
+  </div>
+</header>
+
+<form class="busqueda" id="form-busqueda" autocomplete="off">
+  <label>Concepto, &amp;variable o regla
+    <input type="search" id="q" placeholder="/110" spellcheck="false" required>
+  </label>
+  <label>Clases vigentes al
+    <input type="date" id="fecha">
+  </label>
+  <label>Agrupación de reglas
+    <select id="esg"></select>
+  </label>
+  <label class="check"><input type="checkbox" id="todos"> Mostrar pasos donde solo sigue</label>
+  <button class="btn primario" type="submit">Buscar</button>
+</form>
+
+<main id="principal">
+  <section class="vacio" id="vacio">
+    <h2>Cargá un cliente para empezar</h2>
+    <p>Elegí un cliente en la barra de arriba o cargá sus dos archivos desde tu PC: el listado del RPDASC00 del esquema productivo y la T512W exportada desde SE16N.</p>
+  </section>
+</main>
+
+<dialog id="dlg-carga">
+  <h2>Cargar archivos de un cliente</h2>
+  <label>Listado del RPDASC00 (.txt)
+    <input type="file" id="f-rpd" accept=".txt,text/plain">
+  </label>
+  <label>T512W exportada desde SE16N (.txt con tabuladores)
+    <input type="file" id="f-t512" accept=".txt,text/plain">
+  </label>
+  <div id="estado-carga"></div>
+  <div id="guardar-nube" hidden>
+    <label>Código del cliente
+      <input type="text" id="cli-id" placeholder="HAL" maxlength="12">
+    </label>
+    <label>Nombre
+      <input type="text" id="cli-nombre" placeholder="Halliburton">
+    </label>
+    <label>Nota de la versión (opcional)
+      <input type="text" id="cli-notas" placeholder="Cambio de esquema por ticket 1-68…">
+    </label>
+  </div>
+  <p class="nota" id="nota-nube"></p>
+  <div class="pie">
+    <button class="btn" type="button" id="btn-cerrar-carga">Cerrar</button>
+    <button class="btn" type="button" id="btn-leer">Leer archivos</button>
+    <button class="btn" type="button" id="btn-usar" disabled>Usar en esta pestaña</button>
+    <button class="btn primario" type="button" id="btn-guardar" disabled hidden>Guardar versión para el equipo</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-ingreso">
+  <h2>Ingresar</h2>
+  <p class="nota">Te mandamos un link por mail. Solo hace falta para cargar versiones; para consultar no.</p>
+  <label>Mail
+    <input type="email" id="mail" placeholder="nombre@hmconsulting.com.ar">
+  </label>
+  <div id="estado-ingreso"></div>
+  <div class="pie">
+    <button class="btn" type="button" id="btn-cerrar-ingreso">Cerrar</button>
+    <button class="btn primario" type="button" id="btn-link">Enviar link</button>
+  </div>
+</dialog>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

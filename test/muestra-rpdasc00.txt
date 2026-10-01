@@ -1,0 +1,213 @@
+01.10.2026              Edición de esquemas y ciclos ... .                     1
+--------------------------------------------------------------------------------
+2900 001 COM                           Esquema de nómina: Argentina
+2900 002 COPY  XIN0                    Inicialización de la nómina
+XIN0 001 COM                           Initialization INTERNATIONAL
+XIN0 002 BLOCK BEG                     Initialization of Payroll
+XIN0 003 PGM   ABR                     Program type for payroll
+XIN0 008 BLOCK END                     Initialization of Payroll
+2900 005 COPY  2907                    ADP - Lectura del último resultado de nó
+2907 001 BLOCK BEG                     Lectura último resultado de nómina
+2907 003 IMPRT      L                  Importar el último resultado
+2907 004 PORT  X006 P06  NOAB          Transferencia datos relevantes a LRT
+--------------------------------------------------------------------------------
+X006*****         DVWTCL 06
+X006******         ERROR
+X006*****0
+X006*****1         ADDWTL*
+X006*****2         LRTST Y   ADDWTL*
+--------------------------------------------------------------------------------
+2907 008 BLOCK END                     Lectura último resultado de nómina
+2900 006 IF         OCAT 07            Off-cycle ajuste anual AJIA
+2900 008 COPY  29AN                    Ajuste anual de impuesto AJIA
+29AN 001 BLOCK BEG                     Ajuste Anual de impuesto
+29AN 002 P0267 X011 GEN  NOAB          Lectura de pagos en liquidacion especial
+--------------------------------------------------------------------------------
+X011*****          AMT= BETRGNUM= ANZHLNEXTR
+X011*****        1DVAKEYZEINH
+X011********      DVWTCL 47
+X011******** *     OPIND     ADDWT *
+X011******** A     OPIND     ADDWT *
+X011******** Q     ELIMI *   ADDWTE*   ADDWT&MY10      FORCE BANK TRANSFER
+X011*****010      DVWTCL 47                                 <DAYS>
+X011*****010 *     OPIND     ADDWT *
+--------------------------------------------------------------------------------
+29AN 003 PIT   AR13 P62  NOAB          Borra CC-nom. utilizadas en el off-cycle
+--------------------------------------------------------------------------------
+AR13*****         DVWTCL 62
+AR13******        DVAKEYPAYTY            NOT RELEVANT FOR OFFCYCLE PAYROLL
+AR13****** *       ADDWT *
+AR13****** A
+AR13*****3         ADDWT *
+--------------------------------------------------------------------------------
+AR131****         DVWTCL 62
+AR131*****        DVAKEYPAYTY            NOT RELEVANT FOR OFFCYCLE PAYROLL
+AR131***** *       ADDWT *
+AR131***** A
+AR131****3         ADDWT *
+--------------------------------------------------------------------------------
+29AN 036 BLOCK END
+2900 009 ELSE                          Esquema de nómina: Argentina
+2900 010 COPY  2920                    Basico y Organizacion de la Nomina
+2920 001 BLOCK BEG                     Basico y Organizacion de la Nomina
+2920 003 IF    >ARX
+--------------------------------------------------------------------------------
+>ARX*****         DNUM=KZAAMMNUM?2604
+>ARX******         SCOND=T IF
+>ARX*****<         SCOND=F IF
+--------------------------------------------------------------------------------
+2920 004 MOD   >ARZ GEN                HAL MODIF A partir de ABRIL 2026
+--------------------------------------------------------------------------------
+>ARZ1****         DMODIF A=12OUTWPPLTSC
+>ARZ1********     DOUTWPPERSB
+>ARZ1******** **   MODIF 2=04
+>ARZ1****0003     DOUTWPPERSB
+>ARZ1****0003 [A   MODIF 2=07
+--------------------------------------------------------------------------------
+2920 005 ENDIF
+2920 010 PIT   <AR9      NOAB          HAL AR - Creo Variable ZSAL -New
+--------------------------------------------------------------------------------
+<AR9*1000         DADDWT *   ZERO= AR  NUM=1     ADDWT 7306WPALL?FRST
+<AR9*1000N
+<AR9*1000Y         FILLF AR  ADDWT&ZSAL
+<AR9*42AT         DADDWT *   NUM=KZAAMMNUM?2604
+<AR9*42AT*        DFILLF N   NUM=& ZZATPRINT     NUM?1
+<AR9*42AT* *       FILLF N   ADDWT&ZSALNUM=1     ADDWT&ZZAT
+<AR9*42AT* =
+<AR9*42AT<        DFILLF N   WPALL?FRST
+<AR9*42AT< N
+<AR9*42AT< Y       ADDWT&ZSAL
+--------------------------------------------------------------------------------
+<AR9Z1000          ADDWT *   ADDWT&ZSALZERO= AR  NUM=1     ADDWT 7306
+--------------------------------------------------------------------------------
+2920 011 PIT   >ABH      NOAB          Valorizamos ccn 3006
+--------------------------------------------------------------------------------
+>ABH*3006         DNUM=KZAAMMNUM?2511
+>ABH*3006*        DNUM?2604
+>ABH*3006* *       FILLF N   ADDWT *
+>ABH*3006* <      DOUTWPPLTSC
+>ABH*3006* < **** PPCYG>ABHA
+>ABH*3006* < 0004 PPCYG>ABHB
+>ABH*3006<         FILLF N   ADDWT *
+--------------------------------------------------------------------------------
+>ABHA****          FILLF N   AMT=IZVIANMULTI ANA ADDWT *
+--------------------------------------------------------------------------------
+>ABHB****         DOUTWPPERSB
+>ABHB******       PPCYG>ABHA
+>ABHB****[B       PPCYG>ABHA
+--------------------------------------------------------------------------------
+2920 056 BLOCK END
+2900 014 COPY  29T0                    Remuneración bruta
+29T0 001 BLOCK BEG                     Liquidación bruta
+29T0 015 PIT   X010 P01                Crear bases valoración (suma)
+--------------------------------------------------------------------------------
+X010*****         DVWTCL 01
+X010******         ERROR
+X010*****0         ADDWT *
+--------------------------------------------------------------------------------
+X0101****         DVWTCL 01
+X0101*****         ERROR
+X0101****0         ADDWT *
+X0101****1         ADDWT *   ELIMI Z   ZERO= N   ADDWT /001
+X0101****2         ADDWT *   ELIMI Z   ZERO= N   ADDWT /002
+X0101****3         ADDWT *   ELIMI Z   ZERO= N   ADDWT /001ADDWT /002
+--------------------------------------------------------------------------------
+29T0 028 COPY  XCOM                    Tratar compensación por desventaja
+XCOM 001 BLOCK BEG                     Compensac.desvent.
+XCOM 002 IF    X064                    ¿Realizar compensación desventaja?
+--------------------------------------------------------------------------------
+X064*****          SCOND=T IF
+--------------------------------------------------------------------------------
+XCOM 008 DAYPR TC00                *   Generar CC-nóminas para DPS
+TC00 005 BINI
+TC00 009 IF              GWT
+TC00 024 GWT        S    DZL       *
+TC00 034 ENDIF
+TC00 035 EDAY
+XCOM 009 PITAB S    AZL                Grabar ZL de DPS en AZL
+XCOM 017 ENDIF                         Final compensación por desventaja
+XCOM 018 BLOCK END                     Compensac.desvent.
+29T0 031 ACTIO AR82 AR
+--------------------------------------------------------------------------------
+AR82*****          RTE=GKSOLLRTE+ WPCCDRTE-GKAU21RTE- WPCABNUM=1     NEXTR
+AR82*****        1 WGTYP=/239ADDWTE*
+--------------------------------------------------------------------------------
+29T0 054 BLOCK END                     Final del bloque
+2900 022 COPY  29GU                    Grossing-up
+29GU 002 BLOCK BEG                     Grossing-up
+29GU 009 IF    AR22                    Si hay Netos garantizados
+--------------------------------------------------------------------------------
+AR22*****         DARGNE?
+AR22******         SCOND=T IF
+AR22*****F         SCOND=F IF
+--------------------------------------------------------------------------------
+29GU 010 IF         R                  Es recalculo de liquidacion
+29GU 013 ELSE                          Si no es recalculo de liquidacion
+29GU 025 PIT   AR75 P20                Acumulación previa de CC-nóminas.
+--------------------------------------------------------------------------------
+AR75*****         DVWTCL 20
+AR75******         ADDWT *
+AR75*****3         ADDWT *   ADDCU
+AR75*****4         ELIMI *   ADDWT *
+--------------------------------------------------------------------------------
+29GU 037 GRSUP SCHE 29GS GEN  P3       Grossing-up
+29GS 002 COPY  2937                    [2937]-Reduccion base imponible
+2937 001 BLOCK BEG                     [2937]-Reduccion base imponible
+2937 023 PIT   <A78      NOAB          Acumulacion CCN
+--------------------------------------------------------------------------------
+<A78*6000          ADDWTE*
+<A78*6001          ADDWT *   ADDCU
+--------------------------------------------------------------------------------
+2937 026 BLOCK END                     [2937]-Reduccion base imponible
+29GS 009 PIT   AR35 GEN  NOAB          División con constante KGENAU
+--------------------------------------------------------------------------------
+AR35*****         DVWTCL 15
+AR35******        DTABLET512WVARGBGVBLA
+AR35****** *       ADDWT *
+AR35****** 03      AMT/KGENAURTE/KGENAUADDWT *
+AR35*****4         AMT/KGENAURTE/KGENAUADDWT *
+--------------------------------------------------------------------------------
+29GS 012 PIT   AR97      NOAB          Asignación alimentaria no remunerativa
+--------------------------------------------------------------------------------
+AR97*****          ADDWT *
+AR97*/127          ELIMI *   ADDWT *   WGTYP=/3AHRTE=5.40  MULTI ARA NEXTR A
+AR97*/127        A AMT/100   RTE*KGENAUADDWT *   FILLF A   WGTYP=/3AINEXTR B
+AR97*/127        B RTE=2.70  MULTI ARA AMT/100   RTE*KGENAUADDWT *   NEXTR C
+AR97*/127        CDRTE=ZERO  ADDWT /388VAKEYGESES
+AR97*/127**        FILLF A   WGTYP=/3AKRTE=3.00  MULTI ARA AMT/100   NEXTR A
+AR97*/127**      A RTE*KGENAUADDWT *   RTE=ZERO  ADDWT /387FILLF A   NEXTR B
+AR97*/127**      BDWGTYP=/3AJVAKEYASPCR
+AR97*/127** **     RTE=1.50  MULTI ARA AMT/100   RTE*KGENAUADDWT *
+AR97*/127** 02     RTE=1.17  MULTI ARA AMT/100   RTE*KGENAUADDWT *
+AR97*/12702
+--------------------------------------------------------------------------------
+29GS 016 ARSAC                         Calcular Sueldo Anual
+29GU 038 ENDIF                         Fin si es recalculo de liquidacion
+29GU 046 ELSE                          Sino  hay Netos garantizados
+29GU 048 ENDIF                         Fin si hay Netos garantizados
+29GU 052 BLOCK END                     Grossing-up
+2900 055 ENDIF                         fin IF AJIA
+2900 056 COPY  ARNA                    Agrupación del neto/Importe a pagar
+ARNA 001 BLOCK BEG                     Agrupación del neto
+ARNA 003 PIT   AR30 P05  NOAB          Agrupación del neto
+--------------------------------------------------------------------------------
+AR30*****         DVWTCL 05
+AR30******         ERROR
+AR30*****1         ELIMI *   ADDWTE*   ADDWT /550ADDWT /700
+AR30*****3         ELIMI *   ADDWT *
+--------------------------------------------------------------------------------
+ARNA 004 PIT   X040      NOAB          Importe a pagar antes de transferencia
+--------------------------------------------------------------------------------
+X040*/110          ADDWTE*   ADDWT /560ADDWT /562
+X040*/550          ADDWTE*   ADDWT /560ADDWT /562
+--------------------------------------------------------------------------------
+ARNA 007 BLOCK END                     Agrupación del neto
+2900 065 COPY  29ND                    Tratamiento final
+29ND 001 BLOCK BEG                     Tratamiento final
+29ND 004 PIT   X070 GEN  NOAB      *
+--------------------------------------------------------------------------------
+X070*****          ERROR
+--------------------------------------------------------------------------------
+29ND 006 ADDCU      P30
+29ND 019 BLOCK END
+2900 066 PRINT NP   RT
