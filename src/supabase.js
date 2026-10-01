@@ -1,0 +1,2 @@
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+export const sb = createClient('https://rkwzslxkuyornhesaxuf.supabase.co', 'sb_publishable_rN6sh5wzvo0zDSlMjfsg1g_j5xnw-sZ');
