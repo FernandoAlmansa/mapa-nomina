@@ -2,6 +2,7 @@
 import { parsearRPDASC00 } from './rpdasc00.js';
 import { parsearT512W, filtrarT512W } from './t512w.js';
 import { construirIndice, buscarConcepto, buscarVariable, textoRegla, contextoIA, etiquetaPaso, clasesInformadas } from './indice.js';
+import { htmlArbol, htmlReglaCompleta, conectarFiltros, describirOp } from './vistaRegla.js';
 import { MOLGA } from './config.js';
 import * as nube from './nube.js';
 
@@ -10,6 +11,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const fechaISO = ddmmaaaa => { const m = /^(\d\d)\.(\d\d)\.(\d{2,4})$/.exec(ddmmaaaa || ''); return m ? `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2]}-${m[1]}` : null; };
 
 const estado = { modelo: null, t512w: null, ix: null, nombre: '', pendiente: null };
+const ctxVista = () => ({ modelo: estado.modelo, t512w: estado.t512w, fecha: $('#fecha').value, esg: $('#esg').value });
 
 // ---------------------------------------------------------------- carga de datos
 function prepararDatos(rpdTexto, t512Texto) {
@@ -155,27 +157,29 @@ function cabeceraPaso(id) {
 
 const claseEfecto = e => /entra en RT/.test(e) ? 'rt' : /^genera|^guarda/.test(e) ? 'crea' : /elimina|no lo toma|ERROR/.test(e) ? 'elim' : /modifica|acumula/.test(e) ? 'mod' : '';
 
-function htmlAlternativas(alts) {
-  return `<div class="alts">${alts.map(a => `<div class="alt"><span class="c">${esc(a.cond.join(' / ') || 'siempre')}</span>
-      <div><code>${a.ops.length ? esc(a.ops.map(o => o.raw).join('  ')) : '(sin operaciones: no pasa a la salida)'}</code>
-      ${a.ops.filter(o => o.sub).map(o => `<div class="sub">regla ${esc(o.sub.regla)}, agrupación ${esc(o.sub.esg)}, línea ${esc(o.sub.clave)}${htmlAlternativas(o.sub.alternativas)}</div>`).join('')}
-      </div></div>`).join('')}</div>`;
-}
+// Líneas crudas de una regla (agrupación + concepto), como figuran en el RPDASC00
+const textoLinea = (regla, esg, cc) => textoRegla(estado.modelo, regla).split('\n').filter(l => l.startsWith(regla + esg + cc)).join('\n');
+const btnRegla = regla => `<button type="button" class="btn btn-chico" data-q="${esc(regla)}" data-tipo="regla">Abrir regla ${esc(regla)}</button>`;
 
-function htmlEvento(e, esEntradaRT) {
+function htmlEvento(e, esEntradaRT, cc) {
+  const ctx = ctxVista();
   let que = '';
   if (e.tipo === 'procesa') {
-    que = `<p class="que">Regla <b>${esc(e.regla)}</b>, agrupación ${esc(e.esg)}, línea ${esc(e.clave)} (tabla ${esc(e.tabla)})</p>
-      <div>${e.efectos.map(x => `<span class="ef ${claseEfecto(x)}">${esc(x)}</span>`).join('')}</div>${htmlAlternativas(e.alternativas)}`;
-  } else if (e.tipo === 'crea') {
-    que = `<p class="que"><span class="ef crea">lo genera${e.tabla && e.tabla !== 'OT' ? ' en ' + esc(e.tabla) : ''}</span> la regla <b>${esc(e.regla)}</b>
-      procesando ${esc(e.clave === '****' ? 'cualquier concepto' : e.clave)}${e.vk ? ` en la rama ${esc(e.vk)}` : ''}: <code>${esc(e.op)}</code></p>`;
-  } else if (e.tipo === 'lee') {
-    que = `<p class="que"><span class="ef lee">lo lee</span> la regla <b>${esc(e.regla)}</b> (línea ${esc(e.clave)}${e.vk ? `, rama ${esc(e.vk)}` : ''}): <code>${esc(e.op)}</code></p>`;
+    que = `<p class="que">Regla <b>${esc(e.regla)}</b>, línea ${esc(e.clave === '****' ? 'genérica ****' : e.clave)} de la agrupación ${esc(e.esg)} (tabla ${esc(e.tabla)})</p>
+      <div>${e.efectos.map(x => `<span class="ef ${claseEfecto(x)}">${esc(x)}</span>`).join('')}</div>
+      ${htmlArbol(ctx, e.regla, e.esg, e.clave, { concepto: cc, abrirSub: true })}`;
+  } else if (e.tipo === 'crea' || e.tipo === 'lee') {
+    const op = estado.modelo.reglas[e.regla]?.variantes[e.esg]?.[e.clave]?.flatMap(l => l.ops).find(o => o.raw === e.op);
+    const procesando = e.clave === '****' ? 'cualquier concepto (línea genérica)' : e.clave;
+    que = `<p class="que"><span class="ef ${e.tipo === 'crea' ? 'crea' : 'lee'}">${e.tipo === 'crea' ? `lo genera${e.tabla && e.tabla !== 'OT' ? ' en ' + esc(e.tabla) : ''}` : 'lo lee'}</span>
+      la regla <b>${esc(e.regla)}</b> al procesar ${esc(procesando)}${e.vk ? ` (rama ${esc(e.vk)})` : ''}</p>
+      ${op ? `<ol class="ops"><li class="op ${e.tipo === 'crea' ? 'crea' : 'lee'}"><span class="op-txt">${describirOp(ctx, op, e.clave === '****' ? null : e.clave).txt}</span><code class="op-raw">${esc(op.raw)}</code></li></ol>` : `<code>${esc(e.op)}</code>`}
+      <details><summary>Ver la línea ${esc(e.clave)} completa</summary>${htmlArbol(ctx, e.regla, e.esg, e.clave)}</details>`;
   } else {
     que = `<p class="que"><span class="ef">parámetro de la función</span></p>`;
   }
-  const regla = e.regla ? `<details><summary>Ver regla ${esc(e.regla)} completa</summary><pre class="regla">${esc(textoRegla(estado.modelo, e.regla))}</pre></details>` : '';
+  const regla = e.regla ? `<div class="pie-paso">${btnRegla(e.regla)}
+      <details class="crudo"><summary>Código SAP</summary><pre class="regla">${esc(textoLinea(e.regla, e.esg, e.clave))}</pre></details></div>` : '';
   return `<li class="paso t-${e.tipo}${esEntradaRT ? ' entrada-rt' : ''}">
     ${esEntradaRT ? '<span class="marca-rt">Acá entra en RT</span>' : ''}${cabeceraPaso(e.paso)}${que}${regla}</li>`;
 }
@@ -205,13 +209,18 @@ function mostrarConcepto(cc) {
     </aside>
     <section class="recorrido">
       <p class="resumen">${eventos.length} pasos en orden de ejecución${ocultos ? `, ${ocultos} ocultos donde el concepto solo sigue sin cambios` : ''}. Agrupación ${esc(res.esg)}, clases al ${esc(res.fecha)}.</p>
-      ${eventos.length ? `<ol class="traza">${eventos.map(e => htmlEvento(e, e === res.entradaRT)).join('')}</ol>`
+      ${eventos.length ? `<ol class="traza">${eventos.map(e => htmlEvento(e, e === res.entradaRT, res.cc)).join('')}</ol>`
         : `<p>No hay reglas del esquema que mencionen ${esc(cc)}. Si aparece en la RT, lo genera una función estándar (por ejemplo ARSES, ARTAX o una acumulación): revisá el log de la liquidación.</p>`}
     </section>`;
   $('#btn-ia').onclick = async () => {
     await navigator.clipboard.writeText(contextoIA(modelo, res, estado.nombre));
     aviso('Copiado: pegalo en el chat junto con el ticket');
   };
+}
+
+function opVariable(u) {
+  const op = estado.modelo.reglas[u.regla]?.variantes[u.esg]?.[u.cc]?.flatMap(l => l.ops).find(o => o.raw === u.op);
+  return op ? `${describirOp(ctxVista(), op, u.cc === '****' ? null : u.cc).txt} <code class="op-raw">${esc(u.op)}</code>` : `<code>${esc(u.op)}</code>`;
 }
 
 function mostrarVariable(q) {
@@ -222,16 +231,24 @@ function mostrarVariable(q) {
   for (const u of usos) { if (!porPaso.has(u.paso)) porPaso.set(u.paso, []); porPaso.get(u.paso).push(u); }
   $('#principal').innerHTML = `<aside class="ficha"><h2>${esc(q)}</h2><p class="texto">Variable de la tabla VAR: ${usos.filter(u => u.tipo === 'escribe').length} escrituras y ${usos.filter(u => u.tipo === 'lee').length} lecturas.</p></aside>
     <section class="recorrido"><ol class="traza">${[...porPaso].map(([paso, us]) => `<li class="paso t-${us.some(u => u.tipo === 'escribe') ? 'crea' : 'lee'}">${cabeceraPaso(paso)}
-      <div class="alts">${us.map(u => `<div class="alt"><span class="c"><span class="ef ${u.tipo === 'escribe' ? 'crea' : 'lee'}">${u.tipo === 'escribe' ? 'escribe' : 'lee'}</span> ${esc(u.regla)} ${esc(u.esg)}/${esc(u.cc)}${u.vk ? ' rama ' + esc(u.vk) : ''}</span><code>${esc(u.op)}</code></div>`).join('')}</div></li>`).join('')}</ol></section>`;
+      <div class="alts">${us.map(u => `<div class="alt"><span class="c"><span class="ef ${u.tipo === 'escribe' ? 'crea' : 'lee'}">${u.tipo === 'escribe' ? 'escribe' : 'lee'}</span> ${esc(u.regla)} ${esc(u.esg)}/${esc(u.cc)}${u.vk ? ' rama ' + esc(u.vk) : ''}</span><span>${opVariable(u)}</span></div>`).join('')}</div></li>`).join('')}</ol></section>`;
 }
 
 function mostrarRegla(nombre) {
   const m = estado.modelo, r = m.reglas[nombre];
-  const pasos = [...new Set([...r.usadaEn, ...r.invocadaEn])].sort((a, b) => a - b);
+  const lineas = Object.values(r.variantes).reduce((n, v) => n + Object.keys(v).length, 0);
+  const uso = (ids, titulo) => ids.length ? `<div><dt>${titulo}</dt><dd><ul class="usos">${ids.map(id => {
+    const p = m.pasos[id - 1];
+    return `<li><span class="num">#${id}</span> <b>${esc(p.esquema)} ${esc(p.linea)}</b> <code>${esc(p.func)} ${esc(p.par.filter(Boolean).join(' '))}</code><br><span class="nota">${esc(p.texto)}</span></li>`;
+  }).join('')}</ul></dd></div>` : '';
   $('#principal').innerHTML = `<aside class="ficha"><h2>${esc(nombre)}</h2>
-      <p class="texto">Agrupaciones: ${esc(Object.keys(r.variantes).sort().join(', '))}. Se usa en ${r.usadaEn.length} pasos${r.invocadaEn.length ? ` y se invoca como subregla en ${r.invocadaEn.length}` : ''}.</p></aside>
-    <section class="recorrido"><pre class="regla">${esc(textoRegla(m, nombre))}</pre>
-      <ol class="traza" style="margin-top:1rem">${pasos.map(p => `<li class="paso">${cabeceraPaso(p)}</li>`).join('')}</ol></section>`;
+      <p class="texto">${lineas} ${lineas === 1 ? 'línea' : 'líneas'} en ${Object.keys(r.variantes).length === 1 ? 'la agrupación ' + esc(Object.keys(r.variantes)[0]) : 'las agrupaciones ' + esc(Object.keys(r.variantes).sort().join(', '))}.</p>
+      <dl>${uso(r.usadaEn, 'Se usa en')}${uso([...new Set(r.invocadaEn)], 'Se llama como subregla en')}</dl>
+      <p class="nota">Para cada concepto, SAP usa la línea de su agrupación y concepto; si no existe, la genérica <code>****</code> de esa agrupación; después las de la agrupación <code>*</code>.</p>
+    </aside>
+    <section class="recorrido" id="vista-regla">${htmlReglaCompleta(ctxVista(), nombre)}
+      <details class="crudo"><summary>Ver la regla como en el RPDASC00</summary><pre class="regla">${esc(textoRegla(m, nombre))}</pre></details></section>`;
+  conectarFiltros($('#vista-regla'));
 }
 
 function aviso(texto) {
@@ -246,7 +263,13 @@ $('#form-busqueda').addEventListener('submit', e => { e.preventDefault(); buscar
 for (const id of ['#fecha', '#esg', '#todos']) $(id).addEventListener('change', () => estado.modelo && $('#q').value && buscar());
 $('#principal').addEventListener('click', e => {
   const b = e.target.closest('[data-q]');
-  if (b) { $('#q').value = b.dataset.q; buscar(); window.scrollTo({ top: 0 }); }
+  if (!b) return;
+  $('#q').value = b.dataset.q;
+  if (b.dataset.tipo === 'regla' && estado.modelo.reglas[b.dataset.q]) {
+    history.replaceState(null, '', '#' + encodeURIComponent(b.dataset.q));
+    mostrarRegla(b.dataset.q);
+  } else buscar();
+  window.scrollTo({ top: 0 });
 });
 $('#btn-cargar').onclick = async () => { await refrescarUsuario(await sesionActiva()); $('#dlg-carga').showModal(); };
 $('#btn-cerrar-carga').onclick = () => $('#dlg-carga').close();

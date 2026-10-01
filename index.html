@@ -99,6 +99,59 @@
   summary { cursor: pointer; font-size: .82rem; color: var(--acento); }
   pre.regla { margin: .4rem 0 0; padding: .6rem .75rem; background: #f1f4f6; border-radius: 4px; overflow-x: auto; line-height: 1.4; }
 
+  /* Regla legible: operaciones traducidas + árbol de decisiones */
+  .btn-chico { font-size: .8rem; padding: .15rem .55rem; }
+  .cc.var { color: var(--crea); }
+  .cc.regla { color: var(--acento); font-weight: 500; }
+  .arbol { margin: .5rem 0 0; }
+  ol.ops { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+  .op { display: grid; grid-template-columns: 1fr auto; gap: .2rem 1rem; align-items: baseline; padding: .2rem .5rem .2rem .6rem;
+        border-left: 3px solid var(--linea); font-size: .88rem; }
+  .op:hover { background: #f1f4f6; }
+  .op .cc { font-size: .8rem; padding: 0 .3rem; }
+  .op.rt { border-left-color: var(--rt); background: var(--rt-f); }
+  .op.rt b { color: var(--rt); }
+  .op.sigue { border-left-color: var(--tenue); }
+  .op.crea { border-left-color: var(--crea); }
+  .op.mod { border-left-color: var(--mod); }
+  .op.lee { border-left-color: var(--lee); }
+  .op.elim { border-left-color: var(--elim); background: var(--elim-f); }
+  .op.tenue, .op.otra { color: var(--tenue); }
+  .op-raw { font: .74rem var(--mono); color: var(--tenue); white-space: pre; justify-self: end; }
+  @media (max-width: 640px) { .op { grid-template-columns: 1fr; } .op-raw { justify-self: start; } }
+  .decision { display: grid; grid-template-columns: auto 1fr auto; gap: .5rem; align-items: center; margin: .45rem 0 .3rem;
+              font-size: .88rem; font-weight: 500; }
+  .rombo { width: .65rem; height: .65rem; background: var(--acento); transform: rotate(45deg); margin-left: .1rem; }
+  .valor-clase { font: 500 .8rem var(--mono); background: var(--acento); color: #fff; padding: 0 .35rem; border-radius: 3px; }
+  .ramas { display: grid; gap: .45rem; margin: 0 0 .2rem .4rem; padding-left: .9rem; border-left: 2px solid #d5dce2; }
+  .rama-et { display: inline-block; font: 500 .76rem var(--mono); padding: .05rem .5rem; border-radius: 10px; background: #e3e8ec; color: #3a4754; margin-bottom: .2rem; }
+  .rama.aplica > .rama-et { background: var(--acento); color: #fff; }
+  .rama.aplica > .rama-et::after { content: ' ← aplica'; font-family: var(--sans); }
+  details.otras { margin: 0; }
+  details.otras > summary { color: var(--tenue); }
+  details.otras > .rama { margin-top: .4rem; opacity: .7; }
+  .fin { margin: .25rem 0 0; font-size: .82rem; }
+  .fin.elim { color: var(--elim); }
+  .com-regla { margin: .15rem 0 0 .6rem; font-size: .8rem; color: var(--tenue); font-style: italic; }
+  li.sub-regla { list-style: none; margin: .15rem 0 .25rem 1.2rem; padding-left: .6rem; border-left: 2px dotted var(--lee); }
+  li.sub-regla > details { margin: 0; }
+  .pie-paso { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; margin-top: .6rem; }
+  .pie-paso details { margin: 0; }
+  details.crudo > summary { color: var(--tenue); }
+  .herr-regla { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 0 0 .9rem; }
+  .filtro-esg { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .chip-esg { font-size: .8rem; padding: .15rem .6rem; border-radius: 12px; border: 1px solid var(--linea); background: #fff; cursor: pointer; }
+  .chip-esg.activo { background: var(--tinta); border-color: var(--tinta); color: #fff; }
+  .filtro-cc { padding: .3rem .5rem; border: 1px solid var(--linea); border-radius: 4px; width: min(22rem, 100%); }
+  .tarjetas { display: grid; gap: .5rem; }
+  .tarjeta-cc { margin: 0; background: var(--hoja); border: 1px solid var(--linea); border-radius: 6px; padding: 0 .9rem; }
+  .tarjeta-cc[open] { padding-bottom: .8rem; }
+  .tarjeta-cc > summary { display: flex; flex-wrap: wrap; gap: .2rem .75rem; align-items: baseline; padding: .55rem 0; font-size: .9rem; color: var(--tinta); }
+  .tc-cc { font: 500 1rem var(--mono); }
+  .tc-texto { color: var(--tenue); }
+  .tc-esg { margin-left: auto; font-size: .78rem; color: var(--tenue); }
+  ul.usos { list-style: none; margin: .2rem 0 0; padding: 0; display: grid; gap: .45rem; font-size: .85rem; }
+
   .vacio { padding: 3rem 1.5rem; max-width: 60ch; }
   .vacio h2 { font-size: 1.3rem; margin: 0 0 .5rem; }
   .vacio p { color: var(--tenue); }

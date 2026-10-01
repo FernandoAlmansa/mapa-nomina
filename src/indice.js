@@ -109,7 +109,7 @@ export function buscarConcepto(modelo, ix, t512w, cc, { fecha, esg = '*' } = {})
 const orden = t => ({ crea: 0, procesa: 1, lee: 2, funcion: 3 }[t] ?? 9);
 
 // Orden de búsqueda de SAP: (ESG, concepto) → (ESG, ****) → (*, concepto) → (*, ****)
-function elegirLineas(r, esg, cc) {
+export function elegirLineas(r, esg, cc) {
   for (const [e, c] of [[esg, cc], [esg, '****'], ['*', cc], ['*', '****']]) {
     const lineas = r.variantes[e]?.[c];
     if (lineas) return { esg: e, clave: c, lineas };
