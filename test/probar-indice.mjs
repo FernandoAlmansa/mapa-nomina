@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { parsearRPDASC00 } from '../src/rpdasc00.js';
 import { parsearT512W } from '../src/t512w.js';
 import { construirIndice, buscarConcepto, contextoIA, etiquetaPaso, buscarVariable } from '../src/indice.js';
-const leer = f => new TextDecoder('windows-1252').decode(readFileSync(f));
+const leer = f => (b => { try { return new TextDecoder('utf-8', { fatal: true }).decode(b); } catch { return new TextDecoder('windows-1252').decode(b); } })(readFileSync(f));
 const [, , fR, fT, ...ccs] = process.argv;
 const m = parsearRPDASC00(leer(fR)), t = parsearT512W(leer(fT));
 let t0 = Date.now(); const ix = construirIndice(m); console.log('índice', Date.now()-t0, 'ms; ESG', ix.esgs.join(','));

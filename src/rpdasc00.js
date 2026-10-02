@@ -15,6 +15,9 @@ const RX_SEPARADOR = /^-{10,}\s*$/;
 const RX_CABECERA = /^(\d{2}\.\d{2}\.\d{2,4})\s+.*\S/;
 const LLAMAN_ESQUEMA = new Set(['COPY', 'DAYPR', 'GRSUP']);
 
+// ¿El texto parece un listado del RPDASC00? (al menos 3 líneas de esquema al principio)
+export const pareceRPDASC00 = texto => texto.slice(0, 50000).replace(/\r/g, '').split('\n').filter(l => RX_ESQUEMA.test(l)).length >= 3;
+
 export function parsearRPDASC00(texto) {
   const lineas = texto.replace(/\r/g, '').split('\n');
   const modelo = {

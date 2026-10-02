@@ -1,24 +1,31 @@
 # Mapa de nómina
 
-Muestra, para cada concepto de un cliente, por dónde pasa en el esquema de nómina: quién lo crea, qué le hace cada regla, dónde entra en la RT y a qué acumula.
+Muestra, para cada concepto de un cliente, por dónde pasa en el esquema de nómina: quién lo crea, qué le hace cada regla, dónde entra en la RT y a qué acumula. Las reglas se ven traducidas y como árbol de decisiones.
 
-## Qué archivos necesita cada cliente
-1. **RPDASC00** del esquema productivo (ej. 2900), con reglas. Guardar como archivo local, texto con tabuladores.
-2. **T512W** desde SE16N, filtrada por MOLGA 29 (si no se filtra, la página la filtra sola antes de subir).
+## Clientes
+Al abrir la página se listan los clientes de tres lugares y se usa la versión más nueva de cada uno:
+1. **Publicados con la página**: carpeta `clientes/` (índice en `clientes/clientes.json`). Hoy: Halliburton (2900).
+2. **Del equipo**: los que alguien guardó en Supabase con "Guardar para el equipo" (pide ingresar con mail @hmconsulting.com.ar).
+3. **De este navegador**: todo lo que cargás con "Ver y guardar en este navegador" queda guardado ahí.
+
+Se abre solo el último cliente que usaste.
+
+## Cargar o actualizar un cliente
+"Cargar cliente" → pegar (Ctrl/⌘+V) o soltar los dos insumos, en cualquier orden y con cualquier nombre de archivo:
+- **RPDASC00** del esquema productivo, con reglas. En SAP: Lista → Grabar → Archivo local → En el portapapeles (o texto con tabuladores).
+- **T512W** desde SE16N (se filtra MOLGA 29 sola). Exportar → Archivo local → En el portapapeles (o texto con tabuladores).
+
+El cliente no hace falta escribirlo exacto: "halli", "HAL" o "Halliburton Arg." van a Halliburton. Si no coincide con ninguno, se crea uno nuevo.
 
 ## Probar en tu PC
-En esta carpeta: `npx serve .` y abrir http://localhost:3000 → "Cargar archivos".
-(No funciona abriendo index.html con doble clic.)
+En esta carpeta: `npx serve .` y abrir http://localhost:3000 (no funciona abriendo index.html con doble clic).
 
-Pruebas del motor: `node test/probar.mjs 2900.txt T512w.txt` y `node test/probar-indice.mjs 2900.txt T512w.txt /110 1000 &ZSAL`.
+Pruebas del motor: `node test/probar.mjs clientes/HAL/rpdasc00.txt clientes/HAL/t512w.txt`.
 
 ## Publicar
-1. Subir esta carpeta a un repo de GitHub → Settings → Pages → Deploy from branch → main / root.
-2. Supabase: crear proyecto, crear bucket público `listados`, correr `supabase.sql`.
+1. GitHub → Settings → Pages → Deploy from branch → master / root.
+2. Supabase → SQL Editor: correr `supabase.sql` entero (se puede repetir; da los permisos que faltan).
 3. Supabase → Authentication → URL Configuration: poner la URL de GitHub Pages en Site URL y Redirect URLs.
-4. Completar `src/config.js` con la URL y la anon key del proyecto y subir el cambio.
-
-Sin el paso 4 la página funciona igual en modo local.
 
 ## Cómo leer el recorrido
 - La línea genérica `****` de una regla solo se aplica si el paso tiene `GEN` o `Pnn` (en ese caso, solo a conceptos con la clase nn informada).

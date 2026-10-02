@@ -15,10 +15,25 @@ const ALIAS = {
 };
 
 const normalizar = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+// El portapapeles de SAP (lista "sin convertir") separa columnas con | en vez de tabuladores.
+// Se pasa todo a tabuladores para que el resto del lector no distinga de dónde vino.
+export function normalizarSeparadores(texto) {
+  const lineas = texto.replace(/\r/g, '').split('\n');
+  if (lineas.some(l => l.includes('\t'))) return lineas.join('\n');
+  return lineas
+    .filter(l => !/^\s*[|-]?-{5,}[|-]?\s*$/.test(l))
+    .map(l => (/^\s*\|.*\|\s*$/.test(l) ? l.trim().slice(1, -1).split('|').join('\t') : l))
+    .join('\n');
+}
+
+// ¿El texto parece una T512W? (busca la fila de títulos en las primeras líneas)
+export const pareceT512W = texto => normalizarSeparadores(texto.slice(0, 20000)).split('\n').slice(0, 40)
+  .some(l => l.split('\t').length > 10 && /tratamiento|processing class/i.test(l));
+
 const fechaISO = s => { const m = /^(\d\d)\.(\d\d)\.(\d{4})$/.exec(s.trim()); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
 
 export function parsearT512W(texto, molga = '29') {
-  const lineas = texto.replace(/\r/g, '').split('\n');
+  const lineas = normalizarSeparadores(texto).split('\n');
   const iCab = lineas.findIndex(l => l.split('\t').length > 10 && /tratamiento|processing class/i.test(l));
   if (iCab < 0) throw new Error('No encontré la fila de títulos de T512W (¿se exportó como texto con tabuladores?)');
 
@@ -74,7 +89,7 @@ export function vigente(t512w, cc, fecha = new Date().toISOString().slice(0, 10)
 
 // Deja solo la cabecera y las filas de una agrupación de países (para no subir 30 MB de todos los países).
 export function filtrarT512W(texto, molga = '29') {
-  const lineas = texto.replace(/\r/g, '').split('\n');
+  const lineas = normalizarSeparadores(texto).split('\n');
   const iCab = lineas.findIndex(l => l.split('\t').length > 10 && /tratamiento|processing class/i.test(l));
   if (iCab < 0) throw new Error('No encontré la fila de títulos de T512W (¿se exportó como texto con tabuladores?)');
   const titulos = lineas[iCab].split('\t').map(normalizar);

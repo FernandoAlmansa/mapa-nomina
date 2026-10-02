@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { parsearRPDASC00 } from '../src/rpdasc00.js';
 import { parsearT512W, vigente, claseTratamiento } from '../src/t512w.js';
 
-const leer = f => new TextDecoder('windows-1252').decode(readFileSync(f)); // así se lee también en el navegador
+const leer = f => (b => { try { return new TextDecoder('utf-8', { fatal: true }).decode(b); } catch { return new TextDecoder('windows-1252').decode(b); } })(readFileSync(f)); // así se lee también en el navegador
 const ok = (cond, msg) => { console.log(`${cond ? '✔' : '✘'} ${msg}`); if (!cond) process.exitCode = 1; };
 
 const [, , fRpd, fT512w] = process.argv;

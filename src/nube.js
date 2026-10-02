@@ -42,19 +42,14 @@ export async function listarClientes() {
   const c = await cliente();
   const [{ data: clientes, error: e1 }, { data: versiones, error: e2 }] = await Promise.all([
     c.from('clientes').select('id, nombre').order('nombre'),
-    c.from('versiones').select('id, cliente_id, fecha_listado, subido_en, subido_por, pasos, reglas').order('subido_en', { ascending: false }),
+    c.from('versiones').select('*').order('subido_en', { ascending: false }),
   ]);
   if (e1 || e2) throw e1 || e2;
   return clientes.map(cl => ({ ...cl, ultima: versiones.find(v => v.cliente_id === cl.id) ?? null }));
 }
 
-export async function descargarUltima(clienteId) {
+export async function descargarVersion(v) {
   const c = await cliente();
-  const { data, error } = await c.from('versiones').select('*').eq('cliente_id', clienteId)
-    .order('subido_en', { ascending: false }).limit(1);
-  if (error) throw error;
-  if (!data.length) throw new Error(`El cliente ${clienteId} todavía no tiene versiones cargadas`);
-  const v = data[0];
   const bajar = async path => {
     const url = c.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
     const r = await fetch(url);
@@ -62,7 +57,7 @@ export async function descargarUltima(clienteId) {
     return r.text();
   };
   const [rpdTexto, t512Texto] = await Promise.all([bajar(v.rpdasc00_path), bajar(v.t512w_path)]);
-  return { version: v, rpdTexto, t512Texto };
+  return { rpdTexto, t512Texto };
 }
 
 // Cada carga es una versión nueva: no se pisa ni se borra nada de lo anterior.
@@ -82,9 +77,12 @@ export async function guardarVersion({ clienteId, nombre, rpdTexto, t512Texto, r
   const rpdasc00_path = await subir('rpdasc00.txt', rpdTexto);
   const t512w_path = await subir('t512w.txt', t512Texto);
 
-  const { error } = await c.from('versiones').insert({
+  const fila = {
     cliente_id: clienteId, rpdasc00_path, t512w_path,
     fecha_listado: resumen.fechaISO, pasos: resumen.pasos, reglas: resumen.reglas, notas: notas || null,
-  });
+  };
+  let { error } = await c.from('versiones').insert({ ...fila, esquema: resumen.esquema });
+  // Si todavía no se corrió el supabase.sql nuevo, la columna esquema no existe: se guarda sin ella.
+  if (error?.code === 'PGRST204') ({ error } = await c.from('versiones').insert(fila));
   if (error) throw error;
 }

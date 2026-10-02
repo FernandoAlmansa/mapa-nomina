@@ -1,0 +1,11 @@
+[
+  {
+    "id": "HAL",
+    "nombre": "Halliburton",
+    "esquema": "2900",
+    "fechaListado": "01.10.2026",
+    "subido": "2026-10-01T00:00:00Z",
+    "rpdasc00": "clientes/HAL/rpdasc00.txt",
+    "t512w": "clientes/HAL/t512w.txt"
+  }
+]

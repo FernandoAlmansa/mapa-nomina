@@ -1,22 +1,30 @@
 // app.js — Pantalla del mapa de nómina.
-import { parsearRPDASC00 } from './rpdasc00.js';
-import { parsearT512W, filtrarT512W } from './t512w.js';
+import { parsearRPDASC00, pareceRPDASC00 } from './rpdasc00.js';
+import { parsearT512W, filtrarT512W, pareceT512W } from './t512w.js';
 import { construirIndice, buscarConcepto, buscarVariable, textoRegla, contextoIA, etiquetaPaso, clasesInformadas } from './indice.js';
 import { htmlArbol, htmlReglaCompleta, conectarFiltros, describirOp } from './vistaRegla.js';
 import { MOLGA } from './config.js';
 import * as nube from './nube.js';
+import * as local from './local.js';
+import * as catalogo from './clientes.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fechaISO = ddmmaaaa => { const m = /^(\d\d)\.(\d\d)\.(\d{2,4})$/.exec(ddmmaaaa || ''); return m ? `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2]}-${m[1]}` : null; };
+const leerLS = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const grabarLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
 
-const estado = { modelo: null, t512w: null, ix: null, nombre: '', pendiente: null };
+const estado = {
+  modelo: null, t512w: null, ix: null, nombre: '', clienteId: null,
+  clientes: [], cache: new Map(),
+  piezas: { rpd: null, t512: null }, pendiente: null,
+};
 const ctxVista = () => ({ modelo: estado.modelo, t512w: estado.t512w, fecha: $('#fecha').value, esg: $('#esg').value });
 
-// ---------------------------------------------------------------- carga de datos
+// ---------------------------------------------------------------- datos de un cliente
 function prepararDatos(rpdTexto, t512Texto) {
   const modelo = parsearRPDASC00(rpdTexto);
-  if (!modelo.pasos.length) throw new Error('El primer archivo no tiene líneas de esquema reconocibles. Tiene que ser el listado del RPDASC00 guardado como archivo local.');
+  if (!modelo.pasos.length) throw new Error('El RPDASC00 no tiene líneas de esquema reconocibles.');
   const t512w = parsearT512W(t512Texto, MOLGA);
   if (!t512w.filas) throw new Error(`La T512W no tiene filas de la agrupación de países ${MOLGA}.`);
   return { modelo, t512w };
@@ -27,90 +35,191 @@ function activar({ modelo, t512w }, nombre, detalle) {
   const esgs = estado.ix.esgs;
   $('#esg').innerHTML = esgs.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('') + '<option value="*">* (genérica)</option>';
   $('#esg').value = esgs.includes('1') ? '1' : (esgs[0] ?? '*');
-  $('#fuente').textContent = `${nombre ? nombre + ': ' : ''}esquema ${modelo.origen.esquemaRaiz}, listado del ${modelo.origen.fechaListado ?? 's/f'}${detalle ? ', ' + detalle : ''}`;
+  $('#fuente').textContent = `Esquema ${modelo.origen.esquemaRaiz}, listado del ${modelo.origen.fechaListado ?? 's/f'}${detalle ? ' · ' + detalle : ''}`;
   const q = decodeURIComponent(location.hash.slice(1));
   if (q) { $('#q').value = q; buscar(); }
   else mostrarVacio('Buscá un concepto', `Probá con /110, 1000 o una variable como &ZSAL. También podés escribir el nombre de una regla (por ejemplo X010) para verla completa.`);
 }
 
+// ---------------------------------------------------------------- lista de clientes (repo + equipo + este navegador)
+async function cargarListaClientes(abrir) {
+  const { clientes, errores } = await catalogo.listar();
+  estado.clientes = clientes;
+  const sel = $('#cliente');
+  sel.hidden = !clientes.length;
+  sel.innerHTML = '<option value="">Elegí un cliente…</option>' + clientes.map(c => {
+    const v = c.versiones[0];
+    return `<option value="${esc(c.id)}">${esc(c.nombre)}${v.esquema ? ' · esquema ' + esc(v.esquema) : ''}</option>`;
+  }).join('');
+  $('#dl-clientes').innerHTML = clientes.map(c => `<option value="${esc(c.nombre)}"></option>`).join('');
+  if (errores.length) console.warn('Lista de clientes:', errores);
+  if (estado.clienteId) sel.value = estado.clienteId;
+  if (abrir === false) return errores;
+  // Al entrar: el último cliente que usaste, o el único que haya
+  const id = abrir || leerLS('cliente') || (clientes.length === 1 ? clientes[0].id : '');
+  if (id && clientes.some(c => c.id === id)) await abrirCliente(id);
+  else if (!estado.modelo) mostrarVacio(clientes.length ? 'Elegí un cliente' : 'Cargá un cliente para empezar',
+    clientes.length ? 'Elegí un cliente en la barra de arriba. Si el tuyo no está, cargalo con "Cargar cliente".'
+      : 'Tocá "Cargar cliente" y pegá el listado del RPDASC00 y la T512W.');
+  return errores;
+}
+
+async function abrirCliente(id) {
+  const c = estado.clientes.find(x => x.id === id);
+  if (!c) return;
+  const v = c.versiones[0];
+  $('#cliente').value = id;
+  $('#fuente').textContent = `Abriendo ${c.nombre}…`;
+  try {
+    if (!estado.cache.has(v.clave)) {
+      const { rpdTexto, t512Texto } = await v.bajar();
+      estado.cache.set(v.clave, prepararDatos(rpdTexto, t512Texto));
+    }
+    estado.clienteId = id;
+    activar(estado.cache.get(v.clave), c.nombre, v.detalle);
+    grabarLS('cliente', id);
+  } catch (e) {
+    $('#fuente').textContent = 'Sin datos cargados';
+    aviso(`No se pudo abrir ${c.nombre}: ${e.message}`);
+  }
+}
+
+// ---------------------------------------------------------------- carga: pegar, soltar o elegir archivos
 const decodificar = async archivo => {
   const buf = await archivo.arrayBuffer();
   try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
   catch { return new TextDecoder('windows-1252').decode(buf); }
 };
 
-async function leerArchivos() {
-  const [fr, ft] = [$('#f-rpd').files[0], $('#f-t512').files[0]];
-  const caja = $('#estado-carga');
-  estado.pendiente = null; $('#btn-usar').disabled = true; $('#btn-guardar').disabled = true;
-  if (!fr || !ft) { caja.innerHTML = `<div class="estado-carga error">Elegí los dos archivos.</div>`; return; }
+// Recibe un texto (pegado o de un archivo) y lo ubica solo: no importa el orden ni el nombre del archivo.
+function recibirTexto(texto, origen) {
+  if (!texto?.trim()) return;
+  if (pareceT512W(texto)) estado.piezas.t512 = { texto: filtrarT512W(texto, MOLGA), origen };
+  else if (pareceRPDASC00(texto)) estado.piezas.rpd = { texto, origen };
+  else { mostrarEstadoCarga(`No reconozco ${origen}: no parece un listado del RPDASC00 ni una T512W.`, true); return; }
+  procesarPiezas();
+}
+
+async function recibirArchivos(archivos) {
+  for (const f of archivos) recibirTexto(await decodificar(f), `el archivo ${f.name}`);
+}
+
+function mostrarEstadoCarga(html, error) {
+  $('#estado-carga').innerHTML = html ? `<div class="estado-carga${error ? ' error' : ''}">${html}</div>` : '';
+}
+
+function pintarPiezas() {
+  const { rpd, t512 } = estado.piezas;
+  const fila = (pieza, nombre, detalle) => `<li class="${pieza ? 'ok' : ''}"><span class="tilde" aria-hidden="true">${pieza ? '✓' : '○'}</span>
+    <b>${nombre}</b> <span class="nota">${pieza ? esc(detalle) : 'falta'}</span></li>`;
+  const m = estado.pendiente?.datos.modelo, t = estado.pendiente?.datos.t512w;
+  $('#piezas').innerHTML =
+    fila(rpd, 'RPDASC00', m ? `esquema ${m.origen.esquemaRaiz}, ${m.pasos.length.toLocaleString('es-AR')} pasos, ${Object.keys(m.reglas).length} reglas (${rpd.origen})` : rpd?.origen) +
+    fila(t512, 'T512W', t ? `${Object.keys(t.conceptos).length.toLocaleString('es-AR')} conceptos de MOLGA ${MOLGA} (${t512.origen})` : t512?.origen);
+}
+
+async function procesarPiezas() {
+  const { rpd, t512 } = estado.piezas;
+  estado.pendiente = null;
+  $('#btn-usar').disabled = true; $('#btn-guardar').disabled = true;
+  mostrarEstadoCarga('');
   try {
-    const rpdTexto = await decodificar(fr);
-    const t512Texto = filtrarT512W(await decodificar(ft), MOLGA);
-    const datos = prepararDatos(rpdTexto, t512Texto);
-    const { modelo, t512w } = datos;
-    const av = modelo.avisos;
-    caja.innerHTML = `<div class="estado-carga${av.length ? ' error' : ''}">
-      Esquema ${esc(modelo.origen.esquemaRaiz)}: ${modelo.pasos.length.toLocaleString('es-AR')} pasos y ${Object.keys(modelo.reglas).length} reglas (listado del ${esc(modelo.origen.fechaListado)}).
-      T512W: ${t512w.filas.toLocaleString('es-AR')} filas de ${Object.keys(t512w.conceptos).length.toLocaleString('es-AR')} conceptos.
-      ${av.length ? `<br>Hay ${av.length} avisos; revisá el archivo antes de guardarlo para el equipo:<ul>${av.slice(0, 8).map(a => `<li>Línea ${esc(a.linea)}: ${esc(a.msg)}</li>`).join('')}</ul>` : '<br>Sin avisos.'}
-    </div>`;
-    estado.pendiente = { datos, rpdTexto, t512Texto };
-    $('#btn-usar').disabled = false;
-    $('#btn-guardar').disabled = av.length > 0 || !(await sesionActiva());
-    if (!$('#cli-id').value) $('#cli-id').value = modelo.origen.esquemaRaiz === '2900' ? 'HAL' : '';
-  } catch (e) {
-    caja.innerHTML = `<div class="estado-carga error">${esc(e.message)}</div>`;
+    if (rpd && t512) {
+      const datos = prepararDatos(rpd.texto, t512.texto);
+      estado.pendiente = { datos, rpdTexto: rpd.texto, t512Texto: t512.texto };
+      const av = datos.modelo.avisos;
+      if (av.length) mostrarEstadoCarga(`Hay ${av.length} avisos; revisá el listado antes de guardarlo para el equipo:<ul>${av.slice(0, 8).map(a => `<li>Línea ${esc(a.linea)}: ${esc(a.msg)}</li>`).join('')}</ul>`, true);
+      sugerirCliente(datos.modelo.origen.esquemaRaiz);
+      $('#btn-usar').disabled = false;
+      $('#btn-guardar').disabled = av.length > 0 || !(await sesionActiva());
+    }
+  } catch (e) { mostrarEstadoCarga(esc(e.message), true); }
+  pintarPiezas();
+  interpretarCliente();
+}
+
+// Si ya hay un cliente con el mismo esquema, se propone ese
+function sugerirCliente(esquema) {
+  const campo = $('#cli-nombre');
+  if (campo.value.trim()) return;
+  const candidatos = catalogo.porEsquema(estado.clientes, esquema);
+  if (candidatos.length === 1) campo.value = candidatos[0].nombre;
+}
+
+// Cliente al que va la carga: no hace falta escribirlo exacto
+function resolverCliente() {
+  const texto = $('#cli-nombre').value.trim();
+  const esquema = estado.pendiente?.datos.modelo.origen.esquemaRaiz;
+  if (!texto) return esquema ? { id: catalogo.idDesdeNombre('ESQ' + esquema), nombre: `Esquema ${esquema}`, nuevo: true, sinNombre: true } : null;
+  const hallado = catalogo.buscar(estado.clientes, texto);
+  if (hallado) return { id: hallado.cliente.id, nombre: hallado.cliente.nombre, nuevo: false, exacto: hallado.exacto };
+  return { id: catalogo.idDesdeNombre(texto), nombre: texto, nuevo: true };
+}
+
+function interpretarCliente() {
+  const r = resolverCliente();
+  $('#cli-match').textContent = !r ? ''
+    : r.sinNombre ? `Sin nombre: se guarda como "${r.nombre}". Podés escribir el cliente como te salga (halli, HAL, halliburton…).`
+    : r.nuevo ? `Cliente nuevo: ${r.nombre} (código ${r.id}).`
+    : `Se actualiza ${r.nombre}${r.exacto ? '' : ' (lo reconocí por lo que escribiste)'}.`;
+}
+
+async function usarYGuardarLocal() {
+  const p = estado.pendiente, r = resolverCliente();
+  if (!p || !r) return;
+  const m = p.datos.modelo;
+  try {
+    await local.guardar({ id: r.id, nombre: r.nombre, esquema: m.origen.esquemaRaiz, fechaListado: m.origen.fechaListado, rpdTexto: p.rpdTexto, t512Texto: p.t512Texto });
+    estado.clienteId = r.id;
+    await cargarListaClientes(false);
+    const c = estado.clientes.find(x => x.id === r.id);
+    if (c) estado.cache.set(c.versiones[0].clave, p.datos);
+    grabarLS('cliente', r.id);
+    activar(p.datos, r.nombre, c?.versiones[0].detalle ?? 'guardado en este navegador');
+    $('#cliente').value = r.id;
+  } catch {
+    activar(p.datos, r.nombre, 'solo en esta pestaña (el navegador no permitió guardarlo)');
   }
+  cerrarCarga();
 }
 
 async function guardarEnNube() {
-  const p = estado.pendiente;
-  const id = $('#cli-id').value.trim().toUpperCase();
-  const nombre = $('#cli-nombre').value.trim() || id;
-  if (!p || !id) { aviso('Completá el código del cliente'); return; }
+  const p = estado.pendiente, r = resolverCliente();
+  if (!p || !r) return;
   const btn = $('#btn-guardar'); btn.disabled = true; btn.textContent = 'Guardando…';
   try {
+    const m = p.datos.modelo;
     await nube.guardarVersion({
-      clienteId: id, nombre, rpdTexto: p.rpdTexto, t512Texto: p.t512Texto, notas: $('#cli-notas').value.trim(),
-      resumen: { fechaISO: fechaISO(p.datos.modelo.origen.fechaListado), pasos: p.datos.modelo.pasos.length, reglas: Object.keys(p.datos.modelo.reglas).length },
+      clienteId: r.id, nombre: r.nombre, rpdTexto: p.rpdTexto, t512Texto: p.t512Texto, notas: $('#cli-notas').value.trim(),
+      resumen: { fechaISO: fechaISO(m.origen.fechaListado), pasos: m.pasos.length, reglas: Object.keys(m.reglas).length, esquema: m.origen.esquemaRaiz },
     });
-    activar(p.datos, nombre, 'versión recién guardada');
-    $('#dlg-carga').close();
-    aviso(`Versión de ${nombre} guardada`);
-    await cargarListaClientes(id);
+    estado.clienteId = r.id;
+    await cargarListaClientes(false);
+    const c = estado.clientes.find(x => x.id === r.id);
+    if (c) estado.cache.set(c.versiones[0].clave, p.datos);
+    grabarLS('cliente', r.id);
+    activar(p.datos, r.nombre, c?.versiones[0].detalle ?? 'versión recién guardada');
+    aviso(`Versión de ${r.nombre} guardada para el equipo`);
+    cerrarCarga();
   } catch (e) {
-    $('#estado-carga').insertAdjacentHTML('beforeend', `<div class="estado-carga error">No se pudo guardar: ${esc(e.message)}</div>`);
-  } finally { btn.textContent = 'Guardar versión para el equipo'; btn.disabled = false; }
+    mostrarEstadoCarga(`No se pudo guardar para el equipo: ${esc(e.message)}`, true);
+  } finally { btn.textContent = 'Guardar para el equipo'; btn.disabled = !estado.pendiente; }
 }
 
-// ---------------------------------------------------------------- nube
+function abrirCarga() {
+  estado.piezas = { rpd: null, t512: null }; estado.pendiente = null;
+  $('#cli-nombre').value = ''; $('#cli-notas').value = '';
+  mostrarEstadoCarga(''); pintarPiezas(); interpretarCliente();
+  $('#btn-usar').disabled = true; $('#btn-guardar').disabled = true;
+  $('#dlg-carga').showModal();
+  $('#zona').focus();
+}
+const cerrarCarga = () => $('#dlg-carga').close();
+
+// ---------------------------------------------------------------- sesión del equipo
 async function sesionActiva() {
   if (!nube.configurada()) return null;
   try { return await nube.sesion(); } catch { return null; }
-}
-
-async function cargarListaClientes(seleccionar) {
-  const sel = $('#cliente');
-  try {
-    const lista = await nube.listarClientes();
-    sel.hidden = false;
-    sel.innerHTML = '<option value="">Elegí un cliente</option>' + lista.map(c =>
-      `<option value="${esc(c.id)}">${esc(c.nombre)} (${esc(c.id)})${c.ultima ? '' : ', sin versiones'}</option>`).join('');
-    const guardado = seleccionar || localStorage.getItem('cliente');
-    if (guardado && lista.some(c => c.id === guardado)) { sel.value = guardado; if (!seleccionar) await abrirCliente(guardado); }
-  } catch (e) { aviso('No se pudo leer la lista de clientes: ' + e.message); }
-}
-
-async function abrirCliente(id) {
-  if (!id) return;
-  $('#fuente').textContent = `Bajando ${id}…`;
-  try {
-    const { version, rpdTexto, t512Texto } = await nube.descargarUltima(id);
-    const nombre = $('#cliente').selectedOptions[0]?.textContent.replace(/ \(.*$/, '') || id;
-    activar(prepararDatos(rpdTexto, t512Texto), nombre, `cargado por ${version.subido_por ?? 's/d'} el ${new Date(version.subido_en).toLocaleDateString('es-AR')}`);
-    localStorage.setItem('cliente', id);
-  } catch (e) { $('#fuente').textContent = 'Sin datos cargados'; aviso(e.message); }
 }
 
 async function refrescarUsuario(s) {
@@ -118,11 +227,11 @@ async function refrescarUsuario(s) {
   $('#btn-ingresar').hidden = !configurada || Boolean(s);
   $('#btn-salir').hidden = !s;
   $('#usuario').textContent = s?.user?.email ?? '';
-  $('#guardar-nube').hidden = !s;
   $('#btn-guardar').hidden = !s;
-  $('#nota-nube').textContent = !configurada
-    ? 'Modo local: los archivos se usan solo en esta pestaña. Para compartirlos con el equipo, completá src/config.js.'
-    : s ? '' : 'Para guardar la versión para el equipo, ingresá con tu mail.';
+  $('#btn-usar').classList.toggle('primario', !s);
+  $('#nota-nube').textContent = !configurada ? ''
+    : s ? 'Con "Guardar para el equipo" lo ven todos los que abran la página.'
+    : 'Se guarda en este navegador. Para que lo vea todo el equipo, ingresá con tu mail de HM.';
 }
 
 // ---------------------------------------------------------------- búsqueda y render
@@ -258,7 +367,7 @@ function aviso(texto) {
 }
 
 // ---------------------------------------------------------------- eventos
-$('#fecha').value = new Date().toISOString().slice(0, 10);
+{ const h = new Date(); $('#fecha').value = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; }
 $('#form-busqueda').addEventListener('submit', e => { e.preventDefault(); buscar(); });
 for (const id of ['#fecha', '#esg', '#todos']) $(id).addEventListener('change', () => estado.modelo && $('#q').value && buscar());
 $('#principal').addEventListener('click', e => {
@@ -271,11 +380,32 @@ $('#principal').addEventListener('click', e => {
   } else buscar();
   window.scrollTo({ top: 0 });
 });
-$('#btn-cargar').onclick = async () => { await refrescarUsuario(await sesionActiva()); $('#dlg-carga').showModal(); };
-$('#btn-cerrar-carga').onclick = () => $('#dlg-carga').close();
-$('#btn-leer').onclick = leerArchivos;
-$('#btn-usar').onclick = () => { activar(estado.pendiente.datos, 'Archivos locales', ''); $('#dlg-carga').close(); };
+$('#btn-cargar').onclick = async () => { await refrescarUsuario(await sesionActiva()); abrirCarga(); };
+$('#btn-cerrar-carga').onclick = cerrarCarga;
+$('#btn-usar').onclick = usarYGuardarLocal;
 $('#btn-guardar').onclick = guardarEnNube;
+$('#cli-nombre').addEventListener('input', interpretarCliente);
+
+// Pegar: con Ctrl/⌘+V en cualquier parte del cuadro (menos en los campos de texto) o con el botón
+$('#dlg-carga').addEventListener('paste', e => {
+  if (e.target.closest('input')) return;
+  e.preventDefault();
+  recibirTexto(e.clipboardData.getData('text/plain'), 'lo pegado');
+});
+$('#btn-pegar').onclick = async () => {
+  try { recibirTexto(await navigator.clipboard.readText(), 'lo pegado'); }
+  catch { mostrarEstadoCarga('El navegador no dejó leer el portapapeles con el botón. Hacé clic en el recuadro y apretá Ctrl+V (⌘+V en Mac).', true); }
+};
+$('#f-archivos').addEventListener('change', e => { recibirArchivos([...e.target.files]); e.target.value = ''; });
+const zona = $('#zona');
+zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('encima'); });
+zona.addEventListener('dragleave', () => zona.classList.remove('encima'));
+zona.addEventListener('drop', e => {
+  e.preventDefault(); zona.classList.remove('encima');
+  if (e.dataTransfer.files.length) recibirArchivos([...e.dataTransfer.files]);
+  else recibirTexto(e.dataTransfer.getData('text/plain'), 'el texto soltado');
+});
+
 $('#btn-ingresar').onclick = () => $('#dlg-ingreso').showModal();
 $('#btn-cerrar-ingreso').onclick = () => $('#dlg-ingreso').close();
 $('#btn-link').onclick = async () => {
@@ -287,8 +417,9 @@ $('#cliente').addEventListener('change', e => abrirCliente(e.target.value));
 
 (async () => {
   await refrescarUsuario(null);
-  if (!nube.configurada()) return;
-  await nube.alCambiarSesion(refrescarUsuario);
-  refrescarUsuario(await sesionActiva());
+  if (nube.configurada()) {
+    try { await nube.alCambiarSesion(refrescarUsuario); refrescarUsuario(await sesionActiva()); }
+    catch (e) { console.warn('Supabase:', e.message); }
+  }
   await cargarListaClientes();
 })();

@@ -167,6 +167,18 @@
   .estado-carga.error { background: var(--elim-f); color: var(--elim); }
   .estado-carga ul { margin: .3rem 0 0; padding-left: 1.1rem; }
 
+  /* Carga por portapapeles */
+  .zona { border: 2px dashed var(--linea); border-radius: 8px; padding: 1rem; text-align: center; background: #f6f8f9; margin: .25rem 0 .75rem; }
+  .zona:focus-visible, .zona.encima { border-color: var(--acento); background: #e9f0f7; outline: none; }
+  .zona-titulo { margin: 0 0 .6rem; font-size: .92rem; }
+  .zona-acc { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; }
+  kbd { font: .8rem var(--mono); padding: 0 .3rem; border: 1px solid var(--linea); border-bottom-width: 2px; border-radius: 3px; background: #fff; }
+  ul.piezas { list-style: none; margin: 0 0 .75rem; padding: 0; display: grid; gap: .3rem; font-size: .88rem; }
+  ul.piezas li { display: flex; gap: .5rem; align-items: baseline; }
+  .tilde { width: 1rem; color: var(--tenue); }
+  ul.piezas li.ok .tilde { color: var(--crea); font-weight: 600; }
+  .barra select#cliente { max-width: 22rem; }
+
   .aviso-flotante { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--tinta); color: #fff; padding: .5rem 1rem; border-radius: 4px; font-size: .9rem; }
   @media (prefers-reduced-motion: no-preference) { details[open] > :not(summary) { animation: abrir .15s ease-out; } }
   @keyframes abrir { from { opacity: 0; } to { opacity: 1; } }
@@ -181,7 +193,7 @@
     <span id="usuario"></span>
     <button class="btn" id="btn-ingresar" hidden>Ingresar</button>
     <button class="btn" id="btn-salir" hidden>Salir</button>
-    <button class="btn" id="btn-cargar">Cargar archivos</button>
+    <button class="btn" id="btn-cargar">Cargar cliente</button>
   </div>
 </header>
 
@@ -201,37 +213,37 @@
 
 <main id="principal">
   <section class="vacio" id="vacio">
-    <h2>Cargá un cliente para empezar</h2>
-    <p>Elegí un cliente en la barra de arriba o cargá sus dos archivos desde tu PC: el listado del RPDASC00 del esquema productivo y la T512W exportada desde SE16N.</p>
+    <h2>Abriendo…</h2>
+    <p>Buscando los clientes cargados.</p>
   </section>
 </main>
 
-<dialog id="dlg-carga">
-  <h2>Cargar archivos de un cliente</h2>
-  <label>Listado del RPDASC00 (.txt)
-    <input type="file" id="f-rpd" accept=".txt,text/plain">
-  </label>
-  <label>T512W exportada desde SE16N (.txt con tabuladores)
-    <input type="file" id="f-t512" accept=".txt,text/plain">
-  </label>
-  <div id="estado-carga"></div>
-  <div id="guardar-nube" hidden>
-    <label>Código del cliente
-      <input type="text" id="cli-id" placeholder="HAL" maxlength="12">
-    </label>
-    <label>Nombre
-      <input type="text" id="cli-nombre" placeholder="Halliburton">
-    </label>
-    <label>Nota de la versión (opcional)
-      <input type="text" id="cli-notas" placeholder="Cambio de esquema por ticket 1-68…">
-    </label>
+<dialog id="dlg-carga" aria-labelledby="titulo-carga">
+  <h2 id="titulo-carga">Cargar o actualizar un cliente</h2>
+  <p class="nota">Hacen falta el listado del <b>RPDASC00</b> y la <b>T512W</b>, en cualquier orden y con cualquier nombre de archivo.
+    En SAP: <i>Lista → Grabar → Archivo local → En el portapapeles</i> (en SE16N, <i>Exportar → Archivo local → En el portapapeles</i>) y acá pegás.</p>
+  <div class="zona" id="zona" tabindex="0" aria-label="Pegá acá con Ctrl+V o soltá los archivos">
+    <p class="zona-titulo">Pegá acá con <kbd>Ctrl</kbd>+<kbd>V</kbd> (<kbd>⌘</kbd>+<kbd>V</kbd> en Mac) o soltá los archivos</p>
+    <div class="zona-acc">
+      <button class="btn" type="button" id="btn-pegar">Pegar del portapapeles</button>
+      <label class="btn">Elegir archivos<input type="file" id="f-archivos" multiple hidden></label>
+    </div>
   </div>
+  <ul class="piezas" id="piezas"></ul>
+  <div id="estado-carga"></div>
+  <label>Cliente
+    <input type="text" id="cli-nombre" list="dl-clientes" placeholder="Halliburton, halli, HAL…" autocomplete="off">
+    <datalist id="dl-clientes"></datalist>
+  </label>
+  <p class="nota" id="cli-match"></p>
+  <label>Nota de la versión (opcional)
+    <input type="text" id="cli-notas" placeholder="Cambio de esquema por ticket 1-68…">
+  </label>
   <p class="nota" id="nota-nube"></p>
   <div class="pie">
     <button class="btn" type="button" id="btn-cerrar-carga">Cerrar</button>
-    <button class="btn" type="button" id="btn-leer">Leer archivos</button>
-    <button class="btn" type="button" id="btn-usar" disabled>Usar en esta pestaña</button>
-    <button class="btn primario" type="button" id="btn-guardar" disabled hidden>Guardar versión para el equipo</button>
+    <button class="btn" type="button" id="btn-usar" disabled>Ver y guardar en este navegador</button>
+    <button class="btn primario" type="button" id="btn-guardar" disabled hidden>Guardar para el equipo</button>
   </div>
 </dialog>
 
