@@ -54,7 +54,7 @@ export function construirIndice(modelo) {
 }
 
 // ---------------------------------------------------------------- 2) búsqueda por concepto
-export function buscarConcepto(modelo, ix, t512w, cc, { fecha, esg = '*' } = {}) {
+export function buscarConcepto(modelo, ix, t512w, cc, { fecha, esg = '*', pasoPosible = null } = {}) {
   cc = cc.trim().toUpperCase();
   fecha ??= new Date().toISOString().slice(0, 10);
   const clase = (c, nn) => (t512w ? vigente(t512w, c, fecha)?.vklas[Number(nn) - 1] ?? null : null);
@@ -93,7 +93,9 @@ export function buscarConcepto(modelo, ix, t512w, cc, { fecha, esg = '*' } = {})
   for (const ref of ix.enFuncion[cc] ?? []) eventos.push({ paso: ref.paso, tipo: 'funcion' });
 
   eventos.sort((a, b) => a.paso - b.paso || orden(a.tipo) - orden(b.tipo));
-  const dedup = eventos.filter((e, i, arr) => i === 0 || JSON.stringify(e) !== JSON.stringify(arr[i - 1]));
+  const todos = eventos.filter((e, i, arr) => i === 0 || JSON.stringify(e) !== JSON.stringify(arr[i - 1]));
+  // Pasos que no corren en el escenario elegido (por ejemplo, el bloque del off-cycle en una nómina regular)
+  const dedup = pasoPosible ? todos.filter(e => pasoPosible(e.paso)) : todos;
 
   const t = t512w ? vigente(t512w, cc, fecha) : null;
   const recibeDe = t512w && /^\/1\d\d$/.test(cc)
@@ -103,7 +105,7 @@ export function buscarConcepto(modelo, ix, t512w, cc, { fecha, esg = '*' } = {})
   const entradaRT = dedup.find(e => e.efectos?.includes('entra en RT') || (e.tipo === 'crea' && e.tabla === 'RT')) ?? null;
   const entradaRTCondicional = dedup.filter(e => e.efectos?.includes('entra en RT en alguna rama') && (!entradaRT || e.paso < entradaRT.paso));
 
-  return { cc, fecha, esg, t512w: t, recibeDe, eventos: dedup, entradaRT, entradaRTCondicional };
+  return { cc, fecha, esg, t512w: t, recibeDe, eventos: dedup, entradaRT, entradaRTCondicional, fueraDeEscenario: todos.length - dedup.length };
 }
 
 const orden = t => ({ crea: 0, procesa: 1, lee: 2, funcion: 3 }[t] ?? 9);
@@ -228,11 +230,11 @@ export function buscarVariable(modelo, ix, nombre) {
 }
 
 // Texto compacto para pegar en un chat junto con el ticket.
-export function contextoIA(modelo, res, cliente = '') {
+export function contextoIA(modelo, res, cliente = '', escenario = '') {
   const L = [];
   const t = res.t512w;
   L.push(`# Configuración real del concepto ${res.cc}${cliente ? ' en ' + cliente : ''}`);
-  L.push(`Fuente: RPDASC00 del esquema ${modelo.origen.esquemaRaiz} (listado ${modelo.origen.fechaListado}) + T512W vigente al ${res.fecha}. Agrupación de reglas usada: ${res.esg}.`);
+  L.push(`Fuente: RPDASC00 del esquema ${modelo.origen.esquemaRaiz} (listado ${modelo.origen.fechaListado}) + T512W vigente al ${res.fecha}. Agrupación de reglas usada: ${res.esg}.${escenario ? ` Nómina analizada: ${escenario}${res.fueraDeEscenario ? ` (se excluyen ${res.fueraDeEscenario} pasos que no corren en ella)` : ''}.` : ''}`);
   if (t) L.push(`Texto: ${t.texto}. Acumula en: ${t.acumula.join(' ') || 'ninguna'}. Clases de tratamiento informadas: ${clasesInformadas(t.vklas)}.`);
   if (res.recibeDe.length) L.push(`Se forma por acumulación de ${res.recibeDe.length} conceptos: ${res.recibeDe.join(' ')}.`);
   if (res.entradaRTCondicional.length) L.push(`Antes puede entrar en RT según la rama en: ${res.entradaRTCondicional.map(e => etiquetaPaso(modelo, e.paso) + ' (' + e.regla + ')').join(', ')}.`);

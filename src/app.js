@@ -7,6 +7,7 @@ import { MOLGA } from './config.js';
 import * as nube from './nube.js';
 import * as local from './local.js';
 import * as catalogo from './clientes.js';
+import { opcionesNomina, crearEscenario, estadoPaso, textoCondicion } from './escenario.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,6 +20,7 @@ const estado = {
   clientes: [], cache: new Map(),
   piezas: { rpd: null, t512: null }, pendiente: null,
 };
+const escenario = () => crearEscenario($('#nomina').value || 'regular', $('#periodo').value);
 const ctxVista = () => ({ modelo: estado.modelo, t512w: estado.t512w, fecha: $('#fecha').value, esg: $('#esg').value });
 
 // ---------------------------------------------------------------- datos de un cliente
@@ -35,6 +37,11 @@ function activar({ modelo, t512w }, nombre, detalle) {
   const esgs = estado.ix.esgs;
   $('#esg').innerHTML = esgs.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('') + '<option value="*">* (genérica)</option>';
   $('#esg').value = esgs.includes('1') ? '1' : (esgs[0] ?? '*');
+  const previo = $('#nomina').value;
+  const opciones = opcionesNomina(modelo);
+  $('#nomina').innerHTML = opciones.map(o => `<option value="${esc(o.valor)}">${esc(o.texto)}</option>`).join('');
+  $('#nomina').value = opciones.some(o => o.valor === previo) ? previo : 'regular';
+  $('#periodo').disabled = $('#nomina').value === 'todos';
   $('#fuente').textContent = `Esquema ${modelo.origen.esquemaRaiz}, listado del ${modelo.origen.fechaListado ?? 's/f'}${detalle ? ' · ' + detalle : ''}`;
   const q = decodeURIComponent(location.hash.slice(1));
   if (q) { $('#q').value = q; buscar(); }
@@ -252,11 +259,13 @@ function mostrarVacio(titulo, texto) {
 
 const chipsCC = lista => `<span class="chips">${lista.map(c => `<button type="button" class="cc" data-q="${esc(c)}">${esc(c)}</button>`).join('')}</span>`;
 
-function cabeceraPaso(id) {
+function cabeceraPaso(id, esc_ = escenario()) {
   const m = estado.modelo, p = m.pasos[id - 1];
   const ruta = p.ruta.map(r => esc(etiquetaPaso(m, r))).concat(`<b>${esc(p.esquema)} ${esc(p.linea)}</b>`).join(' › ');
-  const conds = p.cond.map(c => c.tipo === 'IF'
-    ? `<span class="cond${c.rama === 'SINO' ? ' no' : ''}" title="${esc(c.texto)}">${c.rama === 'SINO' ? 'si no ' : 'si '}${esc(c.expr)}</span>`
+  const { dudas } = estadoPaso(esc_, p, m);
+  // En un escenario concreto, las condiciones que ya se cumplen no se muestran: solo las que dependen
+  const conds = p.cond.filter(c => esc_.todos || c.tipo !== 'IF' || dudas.includes(c)).map(c => c.tipo === 'IF'
+    ? `<span class="cond${dudas.includes(c) ? ' duda' : esc_.todos ? (c.rama === 'SINO' ? ' no' : '') : ' cumple'}" title="${esc(`${m.pasos[c.paso - 1].esquema} ${m.pasos[c.paso - 1].linea} IF ${c.expr}`)}">${dudas.includes(c) ? 'depende · ' : ''}${esc(textoCondicion(c, m))}</span>`
     : `<span class="cond" title="${esc(c.texto)}">dentro de bucle ${esc(c.expr)}</span>`).join('');
   return `<div class="cab"><span class="num">#${id}</span><span class="ruta">${ruta}</span>
       <span class="func">${esc(p.func)} ${esc(p.par.filter(Boolean).join(' '))}</span>
@@ -289,40 +298,104 @@ function htmlEvento(e, esEntradaRT, cc) {
   }
   const regla = e.regla ? `<div class="pie-paso">${btnRegla(e.regla)}
       <details class="crudo"><summary>Código SAP</summary><pre class="regla">${esc(textoLinea(e.regla, e.esg, e.clave))}</pre></details></div>` : '';
-  return `<li class="paso t-${e.tipo}${esEntradaRT ? ' entrada-rt' : ''}">
+  return `<li class="paso t-${e.tipo}${esEntradaRT ? ' entrada-rt' : ''}" id="paso-${e.paso}">
     ${esEntradaRT ? '<span class="marca-rt">Acá entra en RT</span>' : ''}${cabeceraPaso(e.paso)}${que}${regla}</li>`;
+}
+
+const fechaAR = iso => (iso ? iso.split('-').reverse().join('.') : '');
+const linkPaso = id => `<a href="#paso-${id}" class="link-paso" data-paso="${id}">${esc(etiquetaPaso(estado.modelo, id))}</a>`;
+const textoT512 = cc => (estado.t512w ? (estado.t512w.conceptos[cc] ?? []).at(-1)?.texto : '') || '';
+
+function describirEscenario(esc_) {
+  if (esc_.todos) return 'todos los caminos';
+  const nomina = $('#nomina').selectedOptions[0]?.textContent ?? 'Nómina regular';
+  return `${nomina}, período ${esc_.retro ? 'retroactivo' : 'actual'}`;
+}
+
+// Clases de tratamiento que efectivamente deciden el camino del concepto en las reglas que lo procesan
+function clasesQueDeciden(res) {
+  const out = new Map();
+  for (const e of res.eventos) {
+    if (e.tipo !== 'procesa' || !e.relevante) continue;
+    const lineas = estado.modelo.reglas[e.regla]?.variantes[e.esg]?.[e.clave] ?? [];
+    for (const l of lineas) for (const o of l.ops)
+      if (o.k === 'decide' && o.por === 'claseTratamiento') {
+        if (!out.has(o.clase)) out.set(o.clase, new Set());
+        out.get(o.clase).add(e.regla);
+      }
+  }
+  return [...out].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+// Una línea por paso relevante: dónde, qué regla y qué le hace
+function htmlResumen(res) {
+  const m = estado.modelo, esc_ = escenario();
+  const items = res.eventos.filter(e => e.relevante).map(e => {
+    const duda = estadoPaso(esc_, m.pasos[e.paso - 1], m).estado === 'depende';
+    let que;
+    if (e.tipo === 'procesa') que = e.efectos.filter(x => x !== 'sigue').map(x => `<span class="ef ${claseEfecto(x)}">${esc(x)}</span>`).join('');
+    else if (e.tipo === 'crea') que = `<span class="ef crea">lo genera${e.tabla && e.tabla !== 'OT' ? ' en ' + esc(e.tabla) : ''}</span> <span class="nota">desde ${esc(e.clave === '****' ? 'cualquier concepto' : e.clave)}</span>`;
+    else if (e.tipo === 'lee') que = `<span class="ef lee">lo lee</span>`;
+    else que = `<span class="ef">parámetro de la función</span>`;
+    return `<li class="${e === res.entradaRT ? 'es-rt' : ''}">${linkPaso(e.paso)}
+      <span class="r-func">${esc(m.pasos[e.paso - 1].func)}</span> ${e.regla ? `<b>${esc(e.regla)}</b>` : ''} ${que}
+      ${duda ? '<span class="cond duda">depende</span>' : ''}</li>`;
+  });
+  return items.length ? `<ol class="resumen-pasos">${items.join('')}</ol>` : '';
+}
+
+function htmlFicha(cc, res) {
+  const m = estado.modelo, t = res.t512w;
+  const crea = res.eventos.filter(e => e.tipo === 'crea');
+  const infotipo = res.eventos.find(e => e.tipo === 'procesa' && /^infotipo/.test(e.tabla));
+  const nace = crea.length
+    ? `<ul class="lista-ficha">${[...new Map(crea.map(e => [e.paso + e.regla, e])).values()].slice(0, 4).map(e => `<li>${linkPaso(e.paso)} · regla <b>${esc(e.regla)}</b>${e.clave !== '****' ? ` desde ${esc(e.clave)}` : ''}</li>`).join('')}${crea.length > 4 ? `<li class="nota">y ${crea.length - 4} más</li>` : ''}</ul>`
+    : infotipo ? `Del ${esc(infotipo.tabla)} (${linkPaso(infotipo.paso)})`
+    : '<span class="nota">Ninguna regla lo crea: viene de un infotipo, de resultados anteriores o de una función estándar.</span>';
+  const clases = clasesQueDeciden(res);
+  const valorClase = nn => (t?.vklas[Number(nn) - 1] ?? ' ').trim() || 'vacía';
+  const informadas = t ? [...t.vklas].map((v, i) => (v.trim() ? [String(i + 1).padStart(2, '0'), v] : null)).filter(Boolean) : [];
+  return `<aside class="ficha">
+      <h2>${esc(cc)}</h2>
+      <p class="texto">${esc(t?.texto || `No figura en T512W (MOLGA ${MOLGA}) a esa fecha`)}</p>
+      <div class="dato-rt">${res.entradaRT
+        ? `<span class="dato-et">Entra en RT</span> ${linkPaso(res.entradaRT.paso)}${res.entradaRT.regla ? ` · regla <b>${esc(res.entradaRT.regla)}</b>` : ''}`
+        : '<span class="dato-et">Entra en RT</span> <span class="nota">no se ve en reglas: puede escribirlo una función estándar</span>'}
+        ${res.entradaRTCondicional.length ? `<p class="nota">Antes, según la rama: ${res.entradaRTCondicional.map(e => linkPaso(e.paso)).join(', ')}</p>` : ''}</div>
+      <dl>
+        <div><dt>Nace en</dt><dd>${nace}</dd></div>
+        ${res.recibeDe.length ? `<div><dt>Se forma sumando ${res.recibeDe.length} conceptos</dt><dd>${chipsCC(res.recibeDe)}</dd></div>` : ''}
+        ${t ? `<div><dt>Acumula en</dt><dd>${t.acumula.length ? `<ul class="lista-ficha">${t.acumula.map(c => `<li><button type="button" class="cc" data-q="${esc(c)}">${esc(c)}</button> ${esc(textoT512(c))}</li>`).join('')}</ul>` : 'ninguna'}</dd></div>` : ''}
+        ${clases.length ? `<div><dt>Clases que deciden su camino</dt><dd><ul class="lista-ficha">${clases.map(([nn, reglas]) => `<li><code>PC${esc(nn)} = ${esc(valorClase(nn))}</code> <span class="nota">en ${esc([...reglas].join(', '))}</span></li>`).join('')}</ul></dd></div>` : ''}
+        ${informadas.length ? `<div><dt>Clases informadas</dt><dd><details><summary>${informadas.length} clases</summary><div class="grilla-clases">${informadas.map(([nn, v]) => `<span><code>PC${nn}</code> ${esc(v)}</span>`).join('')}</div></details></dd></div>` : ''}
+        ${t ? `<div><dt>Vigencia de la fila de T512W</dt><dd>desde ${esc(fechaAR(t.desde))}${t.hasta >= '9999' ? ', sin fecha de fin' : ` hasta ${esc(fechaAR(t.hasta))}`}</dd></div>` : ''}
+      </dl>
+      <div class="acciones"><button class="btn primario" type="button" id="btn-ia">Copiar para IA</button></div>
+    </aside>`;
 }
 
 function mostrarConcepto(cc) {
   const { modelo, ix, t512w } = estado;
-  const res = buscarConcepto(modelo, ix, t512w, cc, { fecha: $('#fecha').value, esg: $('#esg').value });
+  const esc_ = escenario();
+  const res = buscarConcepto(modelo, ix, t512w, cc, {
+    fecha: $('#fecha').value, esg: $('#esg').value,
+    pasoPosible: id => estadoPaso(esc_, modelo.pasos[id - 1], modelo).estado !== 'no corre',
+  });
   const eventos = $('#todos').checked ? res.eventos : res.eventos.filter(e => e.relevante);
-  const t = res.t512w;
   const ocultos = res.eventos.length - eventos.length;
+  const resumen = htmlResumen(res);
 
-  $('#principal').innerHTML = `
-    <aside class="ficha">
-      <h2>${esc(cc)}</h2>
-      <p class="texto">${esc(t?.texto || `No figura en T512W (MOLGA ${MOLGA}) a esa fecha`)}</p>
-      <dl>
-        <div><dt>Entra en RT</dt><dd>${res.entradaRT ? `paso #${res.entradaRT.paso}, ${esc(etiquetaPaso(modelo, res.entradaRT.paso))}${res.entradaRT.regla ? ', regla ' + esc(res.entradaRT.regla) : ''}` : 'No se ve en reglas; puede escribirlo una función estándar'}
-          ${res.entradaRTCondicional.length ? `<br><span class="nota">Antes, según la rama: ${res.entradaRTCondicional.map(e => esc(etiquetaPaso(modelo, e.paso))).join(', ')}</span>` : ''}</dd></div>
-        ${t ? `<div><dt>Acumula en</dt><dd>${t.acumula.length ? chipsCC(t.acumula) : 'ninguna'}</dd></div>` : ''}
-        ${res.recibeDe.length ? `<div><dt>Se forma por acumulación de ${res.recibeDe.length} conceptos</dt><dd>${chipsCC(res.recibeDe)}</dd></div>` : ''}
-        ${t ? `<div><dt>Clases de tratamiento</dt><dd><code>${esc(clasesInformadas(t.vklas)) || 'ninguna'}</code></dd></div>` : ''}
-        ${t ? `<div><dt>Vigencia de la fila usada</dt><dd>${esc(t.desde)} a ${esc(t.hasta)}</dd></div>` : ''}
-      </dl>
-      <div class="acciones">
-        <button class="btn primario" type="button" id="btn-ia">Copiar para IA</button>
-      </div>
-    </aside>
+  $('#principal').innerHTML = `${htmlFicha(cc, res)}
     <section class="recorrido">
-      <p class="resumen">${eventos.length} pasos en orden de ejecución${ocultos ? `, ${ocultos} ocultos donde el concepto solo sigue sin cambios` : ''}. Agrupación ${esc(res.esg)}, clases al ${esc(res.fecha)}.</p>
+      <div class="escenario-nota">Mirando: <b>${esc(describirEscenario(esc_))}</b>${res.fueraDeEscenario ? ` · ${res.fueraDeEscenario} pasos ocultos porque no corren en esta nómina` : ''}</div>
+      ${resumen ? `<h3 class="titulo-sec">Qué le pasa, en orden</h3>${resumen}` : ''}
+      <h3 class="titulo-sec">Detalle paso por paso</h3>
+      <p class="resumen">${eventos.length} pasos${ocultos ? `, ${ocultos} ocultos donde solo sigue sin cambios` : ''}. Agrupación ${esc(res.esg)}, clases al ${esc(fechaAR(res.fecha))}.</p>
       ${eventos.length ? `<ol class="traza">${eventos.map(e => htmlEvento(e, e === res.entradaRT, res.cc)).join('')}</ol>`
-        : `<p>No hay reglas del esquema que mencionen ${esc(cc)}. Si aparece en la RT, lo genera una función estándar (por ejemplo ARSES, ARTAX o una acumulación): revisá el log de la liquidación.</p>`}
+        : `<p>No hay reglas del esquema que mencionen ${esc(cc)} en esta nómina. Si aparece en la RT, lo genera una función estándar (por ejemplo ARSES, ARTAX o una acumulación): revisá el log de la liquidación.</p>`}
     </section>`;
   $('#btn-ia').onclick = async () => {
-    await navigator.clipboard.writeText(contextoIA(modelo, res, estado.nombre));
+    await navigator.clipboard.writeText(contextoIA(modelo, res, estado.nombre, describirEscenario(esc_)));
     aviso('Copiado: pegalo en el chat junto con el ticket');
   };
 }
@@ -348,7 +421,8 @@ function mostrarRegla(nombre) {
   const lineas = Object.values(r.variantes).reduce((n, v) => n + Object.keys(v).length, 0);
   const uso = (ids, titulo) => ids.length ? `<div><dt>${titulo}</dt><dd><ul class="usos">${ids.map(id => {
     const p = m.pasos[id - 1];
-    return `<li><span class="num">#${id}</span> <b>${esc(p.esquema)} ${esc(p.linea)}</b> <code>${esc(p.func)} ${esc(p.par.filter(Boolean).join(' '))}</code><br><span class="nota">${esc(p.texto)}</span></li>`;
+    const est = estadoPaso(escenario(), p, m).estado;
+    return `<li class="${est === 'no corre' ? 'no-corre' : ''}"><span class="num">#${id}</span> <b>${esc(p.esquema)} ${esc(p.linea)}</b>${est === 'no corre' ? ' <span class="cond">no corre en esta nómina</span>' : est === 'depende' ? ' <span class="cond duda">depende</span>' : ''} <code>${esc(p.func)} ${esc(p.par.filter(Boolean).join(' '))}</code><br><span class="nota">${esc(p.texto)}</span></li>`;
   }).join('')}</ul></dd></div>` : '';
   $('#principal').innerHTML = `<aside class="ficha"><h2>${esc(nombre)}</h2>
       <p class="texto">${lineas} ${lineas === 1 ? 'línea' : 'líneas'} en ${Object.keys(r.variantes).length === 1 ? 'la agrupación ' + esc(Object.keys(r.variantes)[0]) : 'las agrupaciones ' + esc(Object.keys(r.variantes).sort().join(', '))}.</p>
@@ -369,8 +443,17 @@ function aviso(texto) {
 // ---------------------------------------------------------------- eventos
 { const h = new Date(); $('#fecha').value = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; }
 $('#form-busqueda').addEventListener('submit', e => { e.preventDefault(); buscar(); });
-for (const id of ['#fecha', '#esg', '#todos']) $(id).addEventListener('change', () => estado.modelo && $('#q').value && buscar());
+$('#nomina').addEventListener('change', () => { $('#periodo').disabled = $('#nomina').value === 'todos'; });
+for (const id of ['#fecha', '#esg', '#todos', '#nomina', '#periodo']) $(id).addEventListener('change', () => estado.modelo && $('#q').value && buscar());
 $('#principal').addEventListener('click', e => {
+  const l = e.target.closest('.link-paso');
+  if (l) {
+    e.preventDefault();
+    const destino = document.getElementById('paso-' + l.dataset.paso);
+    if (destino) { destino.scrollIntoView({ behavior: 'smooth', block: 'start' }); destino.classList.add('resaltado'); setTimeout(() => destino.classList.remove('resaltado'), 1600); }
+    else aviso('Ese paso está oculto: tildá "Mostrar pasos donde solo sigue"');
+    return;
+  }
   const b = e.target.closest('[data-q]');
   if (!b) return;
   $('#q').value = b.dataset.q;
