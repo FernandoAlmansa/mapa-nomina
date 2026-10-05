@@ -3,7 +3,7 @@
 Muestra, para cada concepto de un cliente, por dónde pasa en el esquema de nómina: quién lo crea, qué le hace cada regla, dónde entra en la RT y a qué acumula. Las reglas se ven traducidas y como árbol de decisiones.
 
 Tiene dos pestañas:
-- **Log de la calc** (la principal): pegás o soltás el log de la PC00_M29_CALC de un empleado y elegís un concepto. Muestra lo que pasó de verdad: dónde nace, en qué pasos cambia (tabla, antes y después, con importes), dónde entra en RT y las líneas de regla que corrieron, traducidas. Funciona sin cliente; si además elegís el cliente, cada paso se ubica en el esquema y se pueden abrir las reglas completas. **El log se lee solo en el navegador: no se guarda ni se sube** (tiene datos personales). "Copiar para IA" no incluye el nombre del empleado.
+- **Log de la calc** (la principal): pegás o soltás el log de la PC00_M29_CALC de un empleado y elegís un concepto (o un tema: neto, bruto, Ganancias, aportes…). La pantalla responde "de dónde sale" el importe: un renglón por paso que lo cambia (qué regla o función, qué hizo, con qué números), marcando el paso que define el importe y dónde entra en RT. Para ARTAX (Ganancias), ARTXD (deducciones) y ARSES (aportes y contribuciones) recalcula con los datos del log y dice si cierra; si no cierra, dice dónde nace la diferencia. El detalle técnico (reglas traducidas, tablas antes/después) queda plegado en cada paso. La flecha atrás del navegador vuelve al concepto anterior. Funciona sin cliente; si elegís el cliente, cada paso se ubica en el esquema, se pueden abrir las reglas y se ve qué conceptos suman en las acumulaciones (/1xx). **El log se lee solo en el navegador: no se guarda ni se sube** (tiene datos personales). "Copiar para IA" no incluye el nombre del empleado.
 - **Esquema del cliente**: el recorrido posible según la configuración (todas las ramas). Con un log cargado, los pasos que no corrieron quedan en gris.
 
 ## Clientes
@@ -39,3 +39,6 @@ Lector del log (con el log en `calc.txt`, que no se commitea): `node test/probar
 - Si un concepto no aparece en ninguna regla, lo genera una función estándar (ARSES, ARTAX, acumulaciones): revisar el log.
 - Las funciones de infotipo (P0014, P0015…) con línea genérica se muestran: ahí nace el concepto si el empleado lo tiene en ese infotipo.
 - `VALBSn` cuenta como valorización.
+
+## Funciones estándar
+`catalogo/funciones-29.json` tiene, por cada función del driver HARCALC0, metadatos sacados del código (tablas, conceptos, parámetros) y una ficha escrita a mano para las principales. `catalogo/escala-ganancias.json` tiene la escala del art. 94 (acumulada mensual y anual) para contrastar /4T1. `src/explicar.js` recalcula ARTAX, ARTXD y ARSES con los números del log. El código de SAP no está en el repo: solo lo que escribimos nosotros.

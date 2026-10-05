@@ -102,6 +102,43 @@ export function valoresFila(t, f) {
     .map(([h, v]) => ({ campo: h, valor: /^-?[\d.]+,\d+-?$/.test(v) ? mostrarNumero(v) : v }));
 }
 
+// Números de una fila (null si el campo está vacío o desbordado con *)
+export function numerosFila(t, f) {
+  if (t?.formato === 'rt') {
+    const r = leerFilaRT(f);
+    const n = x => (x && !x.startsWith('*') ? numero(x) : null);
+    return { cc: r.cc, splits: r.splits, valor: n(r.valor), cantidad: n(r.cantidad), importe: n(r.importe) };
+  }
+  const o = t?.cabeceras ? leerFilaPipes(t.cabeceras, f) : {};
+  const k = re => Object.keys(o).find(h => re.test(h));
+  return { cc: (o[t?.cabeceras?.[t.iCC]] ?? '').trim(), splits: '', valor: numero(o[k(/Unidad/i)]), cantidad: numero(o[k(/^Cantidad$/i)]), importe: numero(o[k(/^Importe$/i)]) };
+}
+
+// Suma de importes (o cantidades) de un concepto en una tabla. En CRT se puede filtrar el tipo de acumulación (Y = anual).
+export function sumaConcepto(t, cc, { campo = 'importe', ct = null } = {}) {
+  const filas = t?.porCC?.get(cc) ?? [];
+  let total = 0;
+  for (const f of filas) {
+    if (t.formato === 'rt') { total += numero(leerFilaRT(f)[campo === 'importe' ? 'importe' : campo === 'cantidad' ? 'cantidad' : 'valor']) ?? 0; continue; }
+    const o = leerFilaPipes(t.cabeceras, f);
+    if (ct && (o.CT ?? o.TA ?? '') !== ct) continue;
+    const clave = Object.keys(o).find(h => campo === 'importe' ? /^Importe$/i.test(h) : /^Cantidad$/i.test(h));
+    total += numero(o[clave]) ?? 0;
+  }
+  return total;
+}
+
+// Última versión de una tabla vista antes de un paso (Salida o Entrada)
+export function tablaAntesDe(log, paso, nombre) {
+  let t = paso.entrada.get(nombre) ?? null;
+  if (t) return t;
+  for (const p of log.pasos) {
+    if (p === paso) break;
+    t = p.salida.get(nombre) ?? p.entrada.get(nombre) ?? t;
+  }
+  return t;
+}
+
 export function textoFila(t, f) {
   if (t.formato === 'rt') return leerFilaRT(f).texto;
   const i = t.cabeceras?.findIndex(h => /^Texto|^Txt/i.test(h));

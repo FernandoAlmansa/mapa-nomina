@@ -236,8 +236,85 @@
   ol.resumen-pasos li.no-corrio { opacity: .6; }
   .cond.log-no { background: #e3e8ec; color: var(--tenue); }
   .cond.log-si { background: #e6efe8; color: #3d5a45; margin-bottom: .25rem; display: inline-block; }
+  details.funcion-std { margin-top: .6rem; padding: .45rem .7rem; background: #f1f4f6; border-radius: 4px; }
+  details.funcion-std > summary { color: var(--tinta); font-size: .85rem; }
+  .dl-funcion { display: grid; gap: .4rem; margin: .5rem 0 0; font-size: .84rem; }
+  .dl-funcion dt { font-size: .74rem; color: var(--tenue); }
+  .dl-funcion dd { margin: .1rem 0 0; }
+  .nota.pendiente { color: #7a5400; }
+  details.explicacion { margin-top: .6rem; padding: .5rem .75rem; border: 1px solid var(--linea); border-left: 4px solid var(--acento); border-radius: 4px; background: var(--hoja); }
+  details.explicacion > summary { color: var(--tinta); font-weight: 500; font-size: .9rem; }
+  .tabla-exp td, .tabla-exp th { padding: .2rem .6rem; }
+  .tabla-exp tr.exp-sub th { background: #f1f4f6; text-transform: none; letter-spacing: 0; font-size: .8rem; color: var(--tinta); }
+  .tabla-exp tr.exp-total td { font-weight: 600; border-top: 2px solid var(--linea); }
+  .tabla-exp tbody tr { cursor: default; }
+  ul.exp-res { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .3rem; font-size: .88rem; }
+  ul.exp-res li.no-cierra { background: var(--elim-f); padding: .2rem .4rem; border-radius: 4px; }
+  .culpable { display: block; margin-top: .25rem; padding: .3rem .5rem; border-left: 2px solid var(--elim); font-size: .82rem; }
+  details.exp-tabla { margin-top: .5rem; } details.exp-tabla > summary { font-size: .8rem; color: var(--acento); }
+  ul.exp-res li { color: var(--tinta); }
+  .ficha-func p { margin: .4rem 0; font-size: .86rem; }
   .op-regla { font-size: .78rem; color: var(--tenue); padding: .35rem 0 .1rem .1rem; }
   .op-regla .cc { font-size: .78rem; padding: 0 .3rem; }
+
+  /* Modo log rediseñado: respuesta primero */
+  main > * { min-width: 0; }
+  .vista-log { min-width: 0; grid-column: 1 / -1; padding: 1.25rem 1.5rem 3rem; max-width: 76rem; width: 100%; }
+  .nota-log { font-size: .82rem; color: var(--tenue); margin: 0 0 1rem; }
+  .pregunta { font-size: 1.35rem; margin: 0 0 .25rem; }
+  .temas { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.5rem; }
+  .tema { display: grid; gap: .1rem; text-align: left; padding: .5rem .8rem; border: 1px solid var(--linea); border-radius: 6px; background: var(--hoja); cursor: pointer; min-width: 9rem; }
+  .tema:hover { border-color: var(--acento); }
+  .tema b { font-weight: 500; font-size: .9rem; } .tema code { color: var(--tenue); font-size: .8rem; }
+  .cab-rt { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; }
+  .cab-rt .titulo-sec { margin: .5rem 0; }
+  .cc-cab { display: grid; grid-template-columns: auto 1fr auto; gap: .4rem 1.5rem; align-items: center; padding: 0 0 1rem; border-bottom: 1px solid var(--linea); margin-bottom: 1rem; }
+  .volver { grid-column: 1 / -1; font-size: .85rem; color: var(--acento); text-decoration: none; }
+  .cc-tit h2 { font: 500 2.2rem/1 var(--mono); margin: 0; }
+  .cc-tit p { margin: .25rem 0 0; color: var(--tenue); }
+  .cc-rt { display: grid; justify-items: end; padding: .5rem .9rem; background: var(--rt-f); border-radius: 6px; border-left: 4px solid var(--rt); }
+  .cc-rt .dato-et { font-size: .72rem; font-weight: 600; color: var(--rt); text-transform: uppercase; letter-spacing: .05em; }
+  .monto { font: 600 1.5rem var(--mono); }
+  .cc-acc { display: flex; flex-direction: column; gap: .4rem; }
+  .cc-extra { grid-column: 1 / -1; margin: 0; }
+  @media (max-width: 760px) { .cc-cab { grid-template-columns: 1fr; } .cc-rt { justify-items: start; } .cc-acc { flex-direction: row; flex-wrap: wrap; } }
+  ol.camino { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+  .paso-log { background: var(--hoja); border: 1px solid var(--linea); border-radius: 6px; padding: .6rem .9rem; }
+  .paso-log.clave { border-color: var(--acento); box-shadow: inset 4px 0 0 var(--acento); }
+  .paso-log.es-rt { box-shadow: inset 4px 0 0 var(--rt); }
+  .paso-log.clave.es-rt { box-shadow: inset 4px 0 0 var(--acento); }
+  .paso-log.solo-pasa { background: transparent; padding: .3rem .9rem; color: var(--tenue); }
+  .pl-linea { display: flex; flex-wrap: wrap; gap: .25rem .75rem; align-items: baseline; font-size: .92rem; }
+  .pl-donde { font: 500 .85rem var(--mono); color: var(--tenue); min-width: 7.5rem; }
+  .pl-quien { font-size: .85rem; color: var(--tenue); }
+  .pl-quien .cc { font-size: .8rem; padding: 0 .3rem; }
+  .pl-que { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
+  ol.camino > li { min-width: 0; }
+  .paso-log details, .paso-log .tabla-scroll { max-width: 100%; }
+  .pl-que .cc { font-size: .8rem; padding: 0 .3rem; }
+  .t-elim { color: var(--elim); }
+  .marca { font-size: .74rem; font-weight: 600; padding: .05rem .5rem; border-radius: 10px; background: var(--acento); color: #fff; }
+  .marca.rt { background: var(--rt); }
+  .formula { margin: .35rem 0 0 8.25rem; font: .86rem var(--mono); color: var(--tinta); }
+  .formula .cc { font-size: .78rem; padding: 0 .3rem; }
+  @media (max-width: 760px) { .formula { margin-left: 0; } }
+  details.tecnico { margin-top: .4rem; }
+  details.tecnico > summary { font-size: .78rem; color: var(--tenue); }
+  .paso-log.solo-pasa details.tecnico { display: none; }
+  details.ficha-corta { margin-top: .4rem; } details.ficha-corta p { margin: .3rem 0; font-size: .86rem; }
+  .pie-camino { margin-top: 1rem; }
+  .paso-log.secundario { background: transparent; }
+  .paso-log.secundario .pl-que { color: var(--tenue); }
+  .como { color: var(--tenue); font-size: .86rem; }
+  .cc-cab { grid-template-columns: auto auto 1fr; }
+  .cc-acc { justify-self: end; }
+  @media (max-width: 760px) {
+    .cc-cab { grid-template-columns: 1fr; } .cc-acc { justify-self: start; }
+    .vista-log { padding: 1rem; }
+    .pl-donde { min-width: 0; }
+    .tabla-exp td:nth-child(2), .tabla-exp th:nth-child(2) { white-space: normal; }
+  }
+  tr.fila-actual td { background: var(--rt-f); }
 
   .aviso-flotante { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--tinta); color: #fff; padding: .5rem 1rem; border-radius: 4px; font-size: .9rem; }
   @media (prefers-reduced-motion: no-preference) { details[open] > :not(summary) { animation: abrir .15s ease-out; } }

@@ -10,6 +10,7 @@ import * as catalogo from './clientes.js';
 import { opcionesNomina, crearEscenario, estadoPaso, textoCondicion } from './escenario.js';
 import { pareceLog, parsearLog, alinear, analizarConcepto, rtFinal, contextoIALog } from './log.js';
 import { htmlCargaLog, htmlInicioLog, htmlConceptoLog, describirLog } from './vistaLog.js';
+import { explicarPaso } from './explicar.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -23,6 +24,8 @@ const estado = {
   piezas: { rpd: null, t512: null }, pendiente: null,
   // Modo log: el log vive solo en memoria de esta pestaña (datos personales: nunca se guarda)
   modo: 'log', log: null, alin: null, logCC: '',
+  escalas: null,    // escala art. 94 de Ganancias (catalogo/escala-ganancias.json)
+  catalogo: null,   // funciones estándar de nómina AR (catalogo/funciones-29.json, solo metadatos)
 };
 const escenario = () => crearEscenario($('#nomina').value || 'regular', $('#periodo').value);
 const ctxVista = () => ({ modelo: estado.modelo, t512w: estado.t512w, fecha: $('#fecha').value, esg: $('#esg').value });
@@ -49,7 +52,7 @@ function activar({ modelo, t512w }, nombre, detalle) {
   $('#fuente').textContent = `Esquema ${modelo.origen.esquemaRaiz}, listado del ${modelo.origen.fechaListado ?? 's/f'}${detalle ? ' · ' + detalle : ''}`;
   if (estado.log) estado.alin = alinear(estado.log, modelo);
   if (estado.modo === 'log') { renderLog(); return; }
-  const q = decodeURIComponent(location.hash.slice(1));
+  const q = location.hash.startsWith('#log') ? '' : decodeURIComponent(location.hash.slice(1));
   if (q) { $('#q').value = q; buscar(); }
   else mostrarVacio('Buscá un concepto', `Probá con /110, 1000 o una variable como &ZSAL. También podés escribir el nombre de una regla (por ejemplo X010) para verla completa.`);
 }
@@ -466,7 +469,7 @@ function setModo(modo, render = true) {
 }
 
 const pasoEsquema = p => (estado.modelo && p.idEsquema ? estado.modelo.pasos[p.idEsquema - 1] : null);
-const etiquetaLog = p => { const e = pasoEsquema(p); return e ? `${e.esquema} ${e.linea}` : `#${p.n}`; };
+const etiquetaLog = p => { const e = pasoEsquema(p); return e ? `${e.esquema} ${e.linea}` : `${p.func} ${p.par[0] || ''}`.trim(); };
 function rutaLog(p) {
   const e = pasoEsquema(p);
   if (e) return e.ruta.map(id => esc(etiquetaPaso(estado.modelo, id))).concat(`<b>${esc(e.esquema)} ${esc(e.linea)}</b>`).join(' › ');
@@ -523,23 +526,43 @@ function mostrarConceptoLog(cc) {
   const ctx = { modelo: estado.modelo, t512w: estado.t512w, fecha: fechaFinLog(), esg: '*' };
   $('#principal').innerHTML = htmlConceptoLog(log, res, {
     ctx, etiqueta: etiquetaLog, ruta: rutaLog, nota: notaLog(), todos: $('#todos-log').checked,
-    hayModelo: Boolean(estado.modelo), textoT512: textoT512(res.cc),
+    hayModelo: Boolean(estado.modelo), textoT512: textoT512(res.cc), catalogo: estado.catalogo, escalas: estado.escalas,
   });
   $('#btn-ia-log').onclick = async () => {
-    await navigator.clipboard.writeText(contextoIALog(log, res, { etiqueta: etiquetaLog, cliente: estado.modelo ? estado.nombre : '' }));
+    const f2 = n => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const extra = [];
+    for (const e of res.eventos.filter(x => x.relevante)) {
+      const x = explicarPaso(log, e.paso, { escalas: estado.escalas });
+      if (!x) continue;
+      extra.push('', `## ${x.titulo} (${etiquetaLog(e.paso)})`);
+      for (const b of x.bloques) extra.push(`${b.titulo}: ${b.filas.filter(f => f.total).map(f => `${f.signo < 0 ? '−' : '+'}${f.cc} ${f2(f.total)}`).join(' ')} = ${f2(b.total)}`);
+      for (const r of x.resultados ?? []) extra.push(`${r.cc} ${r.nombre}: SAP ${f2(r.real)}${r.calculado == null ? '' : Math.abs(r.calculado - r.real) < 0.02 ? ' (cierra)' : ` (recalculado ${f2(r.calculado)}: NO CIERRA)`}`);
+      for (const r of x.lista ?? []) if (r.cc === res.cc || x.lista.length <= 12) extra.push(`${r.cc}${r.splits ? ' split ' + r.splits : ''} ${f2(r.importe)}${r.fo?.tipo === 'pct' ? ` = ${r.fo.pct} % × ${f2(r.fo.importeBase)} (${r.fo.bases.join('/')})` : ''}`);
+      if (x.nota) extra.push(x.nota);
+    }
+    await navigator.clipboard.writeText(contextoIALog(log, res, { etiqueta: etiquetaLog, cliente: estado.modelo ? estado.nombre : '' }) + (extra.length ? '\n' + extra.join('\n') : ''));
     aviso('Copiado (sin nombre del empleado): pegalo en el chat junto con el ticket');
   };
+  $('#volver-rt').onclick = ev => { ev.preventDefault(); irALog(''); };
   const ver = $('#btn-ver-esquema');
   if (ver) ver.onclick = () => { setModo('esquema', false); $('#q').value = res.cc; buscar(); window.scrollTo({ top: 0 }); };
 }
 
 const fechaFinLog = () => fechaISO(estado.log?.periodos[0]?.hasta) ?? $('#fecha').value;
 
+// Navegación con historial: la flecha atrás del navegador vuelve al concepto anterior o a la RT
+function irALog(cc, { reemplazar = false } = {}) {
+  estado.logCC = cc;
+  const url = cc ? '#log=' + encodeURIComponent(cc) : '#log';
+  try { (reemplazar ? history.replaceState : history.pushState).call(history, { logCC: cc }, '', url); } catch { /* sin historial */ }
+  $('#q-log').value = cc;
+  renderLog();
+  window.scrollTo({ top: 0 });
+}
+
 function buscarLog() {
   if (!estado.log) return;
-  const q = $('#q-log').value.trim().toUpperCase().replace(/^&/, '');
-  estado.logCC = q;
-  renderLog();
+  irALog($('#q-log').value.trim().toUpperCase().replace(/^&/, ''));
 }
 
 function recibirLog(texto, origen) {
@@ -588,6 +611,12 @@ function conectarZonaLog() {
 { const h = new Date(); $('#fecha').value = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; }
 $('#form-busqueda').addEventListener('submit', e => { e.preventDefault(); buscar(); });
 $('#form-log').addEventListener('submit', e => { e.preventDefault(); buscarLog(); });
+window.addEventListener('popstate', ev => {
+  if (estado.modo !== 'log' || !estado.log) return;
+  estado.logCC = ev.state?.logCC ?? '';
+  $('#q-log').value = estado.logCC;
+  renderLog();
+});
 $('#todos-log').addEventListener('change', () => estado.log && estado.logCC && renderLog());
 $('#tab-log').onclick = () => setModo('log');
 $('#tab-esq').onclick = () => setModo('esquema');
@@ -622,7 +651,7 @@ $('#principal').addEventListener('click', e => {
       $('#q').value = b.dataset.q;
       history.replaceState(null, '', '#' + encodeURIComponent(b.dataset.q));
       mostrarRegla(b.dataset.q);
-    } else { $('#q-log').value = b.dataset.q.replace(/^&/, ''); buscarLog(); }
+    } else irALog(b.dataset.q.replace(/^&/, '').toUpperCase());
     window.scrollTo({ top: 0 });
     return;
   }
@@ -669,7 +698,9 @@ $('#btn-salir').onclick = async () => { await nube.salir(); refrescarUsuario(nul
 $('#cliente').addEventListener('change', e => abrirCliente(e.target.value));
 
 (async () => {
-  setModo(location.hash.length > 1 ? 'esquema' : (leerLS('modo') || 'log'));
+  fetch('catalogo/escala-ganancias.json').then(r => (r.ok ? r.json() : null)).then(d => { estado.escalas = d; }).catch(() => {});
+  fetch('catalogo/funciones-29.json').then(r => (r.ok ? r.json() : null)).then(d => { estado.catalogo = d?.funciones ?? null; }).catch(() => {});
+  setModo(location.hash.length > 1 && !location.hash.startsWith('#log') ? 'esquema' : (leerLS('modo') || 'log'));
   await refrescarUsuario(null);
   if (nube.configurada()) {
     try { await nube.alCambiarSesion(refrescarUsuario); refrescarUsuario(await sesionActiva()); }
