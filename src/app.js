@@ -1,13 +1,15 @@
 // app.js — Pantalla del mapa de nómina.
 import { parsearRPDASC00, pareceRPDASC00 } from './rpdasc00.js';
 import { parsearT512W, filtrarT512W, pareceT512W } from './t512w.js';
-import { construirIndice, buscarConcepto, buscarVariable, textoRegla, contextoIA, etiquetaPaso, clasesInformadas } from './indice.js';
+import { construirIndice, buscarConcepto, buscarVariable, textoRegla, contextoIA, etiquetaPaso, clasesInformadas, esPorConcepto } from './indice.js';
 import { htmlArbol, htmlReglaCompleta, conectarFiltros, describirOp } from './vistaRegla.js';
 import { MOLGA } from './config.js';
 import * as nube from './nube.js';
 import * as local from './local.js';
 import * as catalogo from './clientes.js';
 import { opcionesNomina, crearEscenario, estadoPaso, textoCondicion } from './escenario.js';
+import { pareceLog, parsearLog, alinear, analizarConcepto, rtFinal, contextoIALog } from './log.js';
+import { htmlCargaLog, htmlInicioLog, htmlConceptoLog, describirLog } from './vistaLog.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,6 +21,8 @@ const estado = {
   modelo: null, t512w: null, ix: null, nombre: '', clienteId: null,
   clientes: [], cache: new Map(),
   piezas: { rpd: null, t512: null }, pendiente: null,
+  // Modo log: el log vive solo en memoria de esta pestaña (datos personales: nunca se guarda)
+  modo: 'log', log: null, alin: null, logCC: '',
 };
 const escenario = () => crearEscenario($('#nomina').value || 'regular', $('#periodo').value);
 const ctxVista = () => ({ modelo: estado.modelo, t512w: estado.t512w, fecha: $('#fecha').value, esg: $('#esg').value });
@@ -43,6 +47,8 @@ function activar({ modelo, t512w }, nombre, detalle) {
   $('#nomina').value = opciones.some(o => o.valor === previo) ? previo : 'regular';
   $('#periodo').disabled = $('#nomina').value === 'todos';
   $('#fuente').textContent = `Esquema ${modelo.origen.esquemaRaiz}, listado del ${modelo.origen.fechaListado ?? 's/f'}${detalle ? ' · ' + detalle : ''}`;
+  if (estado.log) estado.alin = alinear(estado.log, modelo);
+  if (estado.modo === 'log') { renderLog(); return; }
   const q = decodeURIComponent(location.hash.slice(1));
   if (q) { $('#q').value = q; buscar(); }
   else mostrarVacio('Buscá un concepto', `Probá con /110, 1000 o una variable como &ZSAL. También podés escribir el nombre de una regla (por ejemplo X010) para verla completa.`);
@@ -254,6 +260,7 @@ function buscar() {
 }
 
 function mostrarVacio(titulo, texto) {
+  if (estado.modo === 'log') return;
   $('#principal').innerHTML = `<section class="vacio"><h2>${esc(titulo)}</h2><p>${esc(texto)}</p></section>`;
 }
 
@@ -273,7 +280,7 @@ function cabeceraPaso(id, esc_ = escenario()) {
     ${conds ? `<div class="conds">${conds}</div>` : ''}`;
 }
 
-const claseEfecto = e => /entra en RT/.test(e) ? 'rt' : /^genera|^guarda/.test(e) ? 'crea' : /elimina|no lo toma|ERROR/.test(e) ? 'elim' : /modifica|acumula/.test(e) ? 'mod' : '';
+const claseEfecto = e => /entra en RT/.test(e) ? 'rt' : /^genera|^guarda|^entra en IT/.test(e) ? 'crea' : /elimina|no lo toma|ERROR/.test(e) ? 'elim' : /modifica|acumula|valoriza/.test(e) ? 'mod' : '';
 
 // Líneas crudas de una regla (agrupación + concepto), como figuran en el RPDASC00
 const textoLinea = (regla, esg, cc) => textoRegla(estado.modelo, regla).split('\n').filter(l => l.startsWith(regla + esg + cc)).join('\n');
@@ -298,8 +305,9 @@ function htmlEvento(e, esEntradaRT, cc) {
   }
   const regla = e.regla ? `<div class="pie-paso">${btnRegla(e.regla)}
       <details class="crudo"><summary>Código SAP</summary><pre class="regla">${esc(textoLinea(e.regla, e.esg, e.clave))}</pre></details></div>` : '';
-  return `<li class="paso t-${e.tipo}${esEntradaRT ? ' entrada-rt' : ''}" id="paso-${e.paso}">
-    ${esEntradaRT ? '<span class="marca-rt">Acá entra en RT</span>' : ''}${cabeceraPaso(e.paso)}${que}${regla}</li>`;
+  const enLog = estadoEnLog(e.paso, cc);
+  return `<li class="paso t-${e.tipo}${esEntradaRT ? ' entrada-rt' : ''}${enLog === 'no corrió' ? ' no-corrio' : ''}" id="paso-${e.paso}">
+    ${esEntradaRT ? '<span class="marca-rt">Acá entra en RT</span>' : ''}${enLog ? `<span class="cond log-${enLog === 'no corrió' ? 'no' : 'si'}">en el log: ${esc(enLog)}</span>` : ''}${cabeceraPaso(e.paso)}${que}${regla}</li>`;
 }
 
 const fechaAR = iso => (iso ? iso.split('-').reverse().join('.') : '');
@@ -337,7 +345,8 @@ function htmlResumen(res) {
     else if (e.tipo === 'crea') que = `<span class="ef crea">lo genera${e.tabla && e.tabla !== 'OT' ? ' en ' + esc(e.tabla) : ''}</span> <span class="nota">desde ${esc(e.clave === '****' ? 'cualquier concepto' : e.clave)}</span>`;
     else if (e.tipo === 'lee') que = `<span class="ef lee">lo lee</span>`;
     else que = `<span class="ef">parámetro de la función</span>`;
-    return `<li class="${e === res.entradaRT ? 'es-rt' : ''}">${linkPaso(e.paso)}
+    const enLog = estadoEnLog(e.paso, res.cc);
+    return `<li class="${e === res.entradaRT ? 'es-rt' : ''}${enLog === 'no corrió' ? ' no-corrio' : ''}">${linkPaso(e.paso)}${enLog === 'no corrió' ? ' <span class="cond log-no">no corrió en el log</span>' : ''}
       <span class="r-func">${esc(m.pasos[e.paso - 1].func)}</span> ${e.regla ? `<b>${esc(e.regla)}</b>` : ''} ${que}
       ${duda ? '<span class="cond duda">depende</span>' : ''}</li>`;
   });
@@ -387,7 +396,7 @@ function mostrarConcepto(cc) {
 
   $('#principal').innerHTML = `${htmlFicha(cc, res)}
     <section class="recorrido">
-      <div class="escenario-nota">Mirando: <b>${esc(describirEscenario(esc_))}</b>${res.fueraDeEscenario ? ` · ${res.fueraDeEscenario} pasos ocultos porque no corren en esta nómina` : ''}</div>
+      <div class="escenario-nota">Mirando: <b>${esc(describirEscenario(esc_))}</b>${res.fueraDeEscenario ? ` · ${res.fueraDeEscenario} pasos ocultos porque no corren en esta nómina` : ''}${estado.log && estado.alin?.alineados ? ` · con el log cargado (${esc(estado.log.periodos[0]?.periodo ?? '')}): los pasos que no corrieron quedan en gris` : ''}</div>
       ${resumen ? `<h3 class="titulo-sec">Qué le pasa, en orden</h3>${resumen}` : ''}
       <h3 class="titulo-sec">Detalle paso por paso</h3>
       <p class="resumen">${eventos.length} pasos${ocultos ? `, ${ocultos} ocultos donde solo sigue sin cambios` : ''}. Agrupación ${esc(res.esg)}, clases al ${esc(fechaAR(res.fecha))}.</p>
@@ -440,9 +449,159 @@ function aviso(texto) {
   document.body.append(d); setTimeout(() => d.remove(), 3500);
 }
 
+
+// ---------------------------------------------------------------- modo log (pantalla principal)
+function setModo(modo, render = true) {
+  estado.modo = modo;
+  grabarLS('modo', modo);
+  $('#tab-log').setAttribute('aria-selected', String(modo === 'log'));
+  $('#tab-esq').setAttribute('aria-selected', String(modo === 'esquema'));
+  $('#form-log').hidden = modo !== 'log';
+  $('#form-busqueda').hidden = modo !== 'esquema';
+  if (!render) return;
+  if (modo === 'log') renderLog();
+  else if (!estado.modelo) { mostrarVacio(estado.clientes.length ? 'Elegí un cliente' : 'Cargá un cliente para empezar', 'Elegí un cliente en la barra de arriba o cargalo con "Cargar cliente".'); }
+  else if ($('#q').value.trim()) buscar();
+  else mostrarVacio('Buscá un concepto', 'Probá con /110, 1000 o una variable como &ZSAL. También podés escribir el nombre de una regla (por ejemplo X010) para verla completa.');
+}
+
+const pasoEsquema = p => (estado.modelo && p.idEsquema ? estado.modelo.pasos[p.idEsquema - 1] : null);
+const etiquetaLog = p => { const e = pasoEsquema(p); return e ? `${e.esquema} ${e.linea}` : `#${p.n}`; };
+function rutaLog(p) {
+  const e = pasoEsquema(p);
+  if (e) return e.ruta.map(id => esc(etiquetaPaso(estado.modelo, id))).concat(`<b>${esc(e.esquema)} ${esc(e.linea)}</b>`).join(' › ');
+  return p.titulos.length ? esc(p.titulos.join(' › ')) : '';
+}
+const notaLog = () => describirLog(estado.log, estado.modelo ? estado.alin : null, estado.modelo ? estado.nombre : '');
+
+function pintarInfoLog() {
+  const log = estado.log;
+  $('#q-log').disabled = !log; $('#btn-buscar-log').disabled = !log;
+  $('#info-log').innerHTML = log
+    ? `<span>Log ${esc(log.periodos[0]?.periodo ?? '')} · ${(log.bytes / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 })} MB · solo en esta pestaña</span>
+       <button class="btn btn-chico" type="button" id="btn-cambiar-log">Cambiar log</button>`
+    : '';
+  $('#dl-log').innerHTML = log ? [...log.conceptos].sort((a, b) => a[0].localeCompare(b[0])).map(([cc, t]) => `<option value="${esc(cc)}">${esc(t)}</option>`).join('') : '';
+}
+
+function renderLog(error = '') {
+  const log = estado.log;
+  if (!log) { $('#principal').innerHTML = htmlCargaLog(error); conectarZonaLog(); return; }
+  if (!estado.logCC) {
+    $('#principal').innerHTML = htmlInicioLog(log, rtFinal(log), notaLog());
+    const filtro = $('#filtro-rt');
+    filtro?.addEventListener('input', () => {
+      const t = filtro.value.trim().toLowerCase();
+      document.querySelectorAll('.tabla-rt tbody tr').forEach(tr => { tr.hidden = Boolean(t) && !tr.dataset.texto.includes(t); });
+    });
+    return;
+  }
+  mostrarConceptoLog(estado.logCC);
+}
+
+// Estado de un paso del esquema según el log cargado (para la vista estática)
+function estadoEnLog(id, cc) {
+  if (!estado.log || !estado.alin?.alineados) return null;
+  const p = estado.modelo.pasos[id - 1];
+  if (!esPorConcepto(p.func) && p.func !== 'ACTIO') return null;
+  const lp = estado.log.pasos.find(x => x.idEsquema === id);
+  if (!lp) return 'no corrió';
+  const b = lp.proceso.find(x => x.cc === cc);
+  return !b ? 'corrió' : b.noProcesado ? 'corrió, no lo procesa' : 'lo procesó';
+}
+
+function mostrarConceptoLog(cc) {
+  const log = estado.log;
+  const res = analizarConcepto(log, cc);
+  estado.logCC = res.cc;
+  if (!res.eventos.length) {
+    $('#principal').innerHTML = `<section class="vacio"><h2>${esc(res.cc)} no aparece en el log</h2>
+      <p>No está en ninguna tabla ni lo procesa ninguna regla en este log. Revisá el código (los conceptos van sin & y las variables también, por ejemplo ZSAL).
+      ${estado.modelo ? 'Para ver dónde podría aparecer según la configuración, abrilo en la pestaña "Esquema del cliente".' : ''}</p></section>`;
+    return;
+  }
+  const ctx = { modelo: estado.modelo, t512w: estado.t512w, fecha: fechaFinLog(), esg: '*' };
+  $('#principal').innerHTML = htmlConceptoLog(log, res, {
+    ctx, etiqueta: etiquetaLog, ruta: rutaLog, nota: notaLog(), todos: $('#todos-log').checked,
+    hayModelo: Boolean(estado.modelo), textoT512: textoT512(res.cc),
+  });
+  $('#btn-ia-log').onclick = async () => {
+    await navigator.clipboard.writeText(contextoIALog(log, res, { etiqueta: etiquetaLog, cliente: estado.modelo ? estado.nombre : '' }));
+    aviso('Copiado (sin nombre del empleado): pegalo en el chat junto con el ticket');
+  };
+  const ver = $('#btn-ver-esquema');
+  if (ver) ver.onclick = () => { setModo('esquema', false); $('#q').value = res.cc; buscar(); window.scrollTo({ top: 0 }); };
+}
+
+const fechaFinLog = () => fechaISO(estado.log?.periodos[0]?.hasta) ?? $('#fecha').value;
+
+function buscarLog() {
+  if (!estado.log) return;
+  const q = $('#q-log').value.trim().toUpperCase().replace(/^&/, '');
+  estado.logCC = q;
+  renderLog();
+}
+
+function recibirLog(texto, origen) {
+  if (!texto?.trim()) return;
+  if (!pareceLog(texto)) {
+    const otro = pareceRPDASC00(texto) || pareceT512W(texto);
+    renderLog(otro ? `Eso parece ${pareceT512W(texto) ? 'una T512W' : 'un RPDASC00'}: los listados del cliente se cargan con "Cargar cliente".`
+      : `No reconozco ${esc(origen)} como un log de la calc: faltan las secciones Entrada / Proceso / Salida y las tablas.`);
+    return;
+  }
+  $('#principal').innerHTML = '<section class="vacio"><h2>Leyendo el log…</h2></section>';
+  setTimeout(() => {
+    try {
+      const log = parsearLog(texto);
+      if (!log.pasos.length) throw new Error('no encontré pasos del esquema');
+      estado.log = log; estado.logCC = '';
+      estado.alin = estado.modelo ? alinear(log, estado.modelo) : null;
+      $('#q-log').value = '';
+      pintarInfoLog();
+      renderLog();
+      $('#q-log').focus();
+    } catch (e) { renderLog(`No se pudo leer el log: ${esc(e.message)}`); }
+  }, 30);
+}
+
+function conectarZonaLog() {
+  const z = $('#zona-log');
+  if (!z) return;
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('encima'); });
+  z.addEventListener('dragleave', () => z.classList.remove('encima'));
+  z.addEventListener('drop', async e => {
+    e.preventDefault(); z.classList.remove('encima');
+    const f = e.dataTransfer.files[0];
+    if (f) recibirLog(await decodificar(f), `el archivo ${f.name}`);
+    else recibirLog(e.dataTransfer.getData('text/plain'), 'el texto soltado');
+  });
+  $('#btn-pegar-log').onclick = async () => {
+    try { recibirLog(await navigator.clipboard.readText(), 'lo pegado'); }
+    catch { renderLog('El navegador no dejó leer el portapapeles con el botón. Hacé clic en el recuadro y apretá Ctrl+V (⌘+V en Mac).'); }
+  };
+  $('#f-log').addEventListener('change', async e => { const f = e.target.files[0]; if (f) recibirLog(await decodificar(f), `el archivo ${f.name}`); e.target.value = ''; });
+  z.focus();
+}
+
 // ---------------------------------------------------------------- eventos
 { const h = new Date(); $('#fecha').value = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; }
 $('#form-busqueda').addEventListener('submit', e => { e.preventDefault(); buscar(); });
+$('#form-log').addEventListener('submit', e => { e.preventDefault(); buscarLog(); });
+$('#todos-log').addEventListener('change', () => estado.log && estado.logCC && renderLog());
+$('#tab-log').onclick = () => setModo('log');
+$('#tab-esq').onclick = () => setModo('esquema');
+$('#form-log').addEventListener('click', e => {
+  if (e.target.id === 'btn-cambiar-log') { estado.log = null; estado.logCC = ''; estado.alin = null; pintarInfoLog(); renderLog(); }
+});
+// Pegar el log en cualquier parte de la pantalla (menos en campos de texto y con un diálogo abierto)
+document.addEventListener('paste', e => {
+  if (estado.modo !== 'log' || estado.log || e.target.closest('input, textarea, dialog')) return;
+  e.preventDefault();
+  recibirLog(e.clipboardData.getData('text/plain'), 'lo pegado');
+});
+// Teclado en la tabla de la RT final
+$('#principal').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('tr[data-q]')) e.target.click(); });
 $('#nomina').addEventListener('change', () => { $('#periodo').disabled = $('#nomina').value === 'todos'; });
 for (const id of ['#fecha', '#esg', '#todos', '#nomina', '#periodo']) $(id).addEventListener('change', () => estado.modelo && $('#q').value && buscar());
 $('#principal').addEventListener('click', e => {
@@ -456,6 +615,17 @@ $('#principal').addEventListener('click', e => {
   }
   const b = e.target.closest('[data-q]');
   if (!b) return;
+  if (estado.modo === 'log') {
+    if (b.dataset.tipo === 'regla') {
+      if (!estado.modelo?.reglas[b.dataset.q]) { aviso(estado.modelo ? `La regla ${b.dataset.q} no está en el esquema cargado` : 'Elegí el cliente arriba para abrir la regla completa'); return; }
+      setModo('esquema', false);
+      $('#q').value = b.dataset.q;
+      history.replaceState(null, '', '#' + encodeURIComponent(b.dataset.q));
+      mostrarRegla(b.dataset.q);
+    } else { $('#q-log').value = b.dataset.q.replace(/^&/, ''); buscarLog(); }
+    window.scrollTo({ top: 0 });
+    return;
+  }
   $('#q').value = b.dataset.q;
   if (b.dataset.tipo === 'regla' && estado.modelo.reglas[b.dataset.q]) {
     history.replaceState(null, '', '#' + encodeURIComponent(b.dataset.q));
@@ -499,6 +669,7 @@ $('#btn-salir').onclick = async () => { await nube.salir(); refrescarUsuario(nul
 $('#cliente').addEventListener('change', e => abrirCliente(e.target.value));
 
 (async () => {
+  setModo(location.hash.length > 1 ? 'esquema' : (leerLS('modo') || 'log'));
   await refrescarUsuario(null);
   if (nube.configurada()) {
     try { await nube.alCambiarSesion(refrescarUsuario); refrescarUsuario(await sesionActiva()); }

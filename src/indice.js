@@ -69,12 +69,13 @@ export function buscarConcepto(modelo, ix, t512w, cc, { fecha, esg = '*', pasoPo
       const elegido = elegirLineas(r, esg, cc);
       if (!elegido) continue;
       // La línea genérica **** solo se usa si el paso lo habilita: par2 GEN (todos) o Pnn (los que tienen la clase nn informada).
-      // Sin GEN/Pnn, los conceptos sin línea propia pasan sin cambios. Las funciones de infotipo con genérica no se muestran.
+      // Sin GEN/Pnn, los conceptos sin línea propia pasan sin cambios. Las funciones de infotipo (P0014, P0015…) sí se muestran:
+      // ahí nacen los conceptos que el empleado tiene en ese infotipo (validado con el log: el 3645 nace en P0014 >ADX GEN).
       if (elegido.clave === '****') {
         const modo = p.par[1] || '';
         const pnn = /^P(\d\d)$/.exec(modo);
-        if (/^P\d{4}$/.test(p.func)) continue;
-        if (pnn) { if (!(clase(cc, pnn[1]) ?? ' ').trim()) continue; }
+        if (/^P\d{4}$/.test(p.func)) { /* se muestra: depende de que el empleado lo tenga en el infotipo */ }
+        else if (pnn) { if (!(clase(cc, pnn[1]) ?? ' ').trim()) continue; }
         else if (modo !== 'GEN') continue;
       }
       const alternativas = resolver(elegido.lineas, cc, ctx, 0);
@@ -170,7 +171,7 @@ function efectos(alternativas, cc, t512w, fecha, func) {
     for (const a of alts) {
       const antesRT = out.has('entra en RT');
       out.delete('entra en RT');
-      let sigue = false, modifica = false;
+      let sigue = false, modifica = false, valoriza = false;
       for (const op of a.ops) {
         if (['operando', 'constante', 'lee', 'leeVar', 'campoInfotipo'].includes(op.k) && op.operador && op.operador !== '?') modifica = true;
         if (op.k === 'escribe' || op.k === 'resta') {
@@ -187,14 +188,19 @@ function efectos(alternativas, cc, t512w, fecha, func) {
           out.add(ac.length ? `acumula en ${ac.join(' ')}` : 'acumula (ADDCU)');
         }
         if (op.k === 'otra' && op.codigo === 'ERROR') out.add('da ERROR');
+        // VALBS0/1/2… toma la base de valoración: es una valorización (sin esto se ocultaba >ARS, donde se valoriza el 3645)
+        if (op.k === 'otra' && op.codigo === 'VALBS' && !op.raw.slice(5).trim().startsWith('?')) valoriza = true;
         if (op.sub) recorrer(op.sub.alternativas, nivel + 1);
       }
       if (out.has('entra en RT') && nivel === 0) altsRT++;
       if (antesRT) out.add('entra en RT'); else if (nivel === 0) out.delete('entra en RT');
-      if (sigue && modifica) out.add('lo modifica');
+      const infotipo = /^P(\d{4})$/.exec(func);
+      if (sigue && infotipo) out.add(`entra en IT desde el infotipo ${infotipo[1]} (si el empleado lo tiene)`);
+      else if (sigue && valoriza) out.add('lo valoriza');
+      else if (sigue && modifica) out.add('lo modifica');
       else if (sigue) out.add('sigue');
       if (nivel === 0 && !escribeCC(a)) {
-        const verbo = ['PORT', 'PLRT', 'PDT', 'PCRT', 'PGRT', 'PAIT'].includes(func) ? 'no lo toma' : 'se elimina';
+        const verbo = ['PORT', 'PLRT', 'PDT', 'PCRT', 'PGRT', 'PAIT'].includes(func) || /^P\d{4}$/.test(func) ? 'no lo toma' : 'se elimina';
         out.add(alts.length > 1 ? `${verbo} en alguna rama` : verbo);
       }
     }

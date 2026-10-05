@@ -201,6 +201,44 @@
   ul.piezas li.ok .tilde { color: var(--crea); font-weight: 600; }
   .barra select#cliente { max-width: 22rem; }
 
+
+  /* Modo log */
+  .pestanas { display: flex; gap: .25rem; }
+  .pestanas button { background: transparent; border: 1px solid transparent; color: #a9b7c4; border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+  .pestanas button[aria-selected=true] { background: #2a3a4a; border-color: #3d5063; color: #fff; }
+  .pestanas button:hover { color: #fff; }
+  [hidden] { display: none !important; }
+  .info-log { font-size: .85rem; color: var(--tenue); display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .carga-log, .inicio-log, main > .vacio { grid-column: 1 / -1; }
+  .carga-log { max-width: 72ch; }
+  .inicio-log { max-width: 70rem; }
+  .zona-log { padding: 2.25rem 1rem; margin: 1rem 0; }
+  .tabla-scroll { overflow-x: auto; margin-top: .6rem; background: var(--hoja); border: 1px solid var(--linea); border-radius: 6px; }
+  table.tabla-rt { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  .tabla-rt th, .tabla-rt td { text-align: left; padding: .3rem .7rem; border-bottom: 1px solid #e3e8ec; }
+  .tabla-rt th { font-size: .75rem; color: var(--tenue); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .tabla-rt .n { text-align: right; font-family: var(--mono); font-size: .84rem; white-space: nowrap; }
+  .tabla-rt tbody tr { cursor: pointer; }
+  .tabla-rt tbody tr:hover, .tabla-rt tbody tr:focus-visible { background: #e9f0f7; }
+  table.cambios { border-collapse: collapse; margin: .6rem 0 .2rem; font-size: .86rem; width: 100%; }
+  .cambios th, .cambios td { text-align: left; vertical-align: top; padding: .3rem .6rem; border: 1px solid #e3e8ec; }
+  .cambios thead th { font-size: .74rem; color: var(--tenue); font-weight: 600; background: #f1f4f6; }
+  .cambios tbody th { font-weight: 500; white-space: nowrap; width: 1%; }
+  .cambios tr.c-nuevo td:last-child { background: var(--crea-f); }
+  .cambios tr.c-cambia td:last-child { background: var(--mod-f); }
+  .cambios tr.c-sale td:last-child { background: var(--elim-f); }
+  .fila-val { display: flex; flex-wrap: wrap; gap: .1rem .8rem; }
+  .val { font: .84rem var(--mono); white-space: nowrap; }
+  .val-c { font: .74rem var(--sans); color: var(--tenue); }
+  .dato-rt .fila-val { margin-top: .2rem; }
+  ol.ops-log { margin-top: .5rem; }
+  .paso.no-corrio { opacity: .55; }
+  ol.resumen-pasos li.no-corrio { opacity: .6; }
+  .cond.log-no { background: #e3e8ec; color: var(--tenue); }
+  .cond.log-si { background: #e6efe8; color: #3d5a45; margin-bottom: .25rem; display: inline-block; }
+  .op-regla { font-size: .78rem; color: var(--tenue); padding: .35rem 0 .1rem .1rem; }
+  .op-regla .cc { font-size: .78rem; padding: 0 .3rem; }
+
   .aviso-flotante { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--tinta); color: #fff; padding: .5rem 1rem; border-radius: 4px; font-size: .9rem; }
   @media (prefers-reduced-motion: no-preference) { details[open] > :not(summary) { animation: abrir .15s ease-out; } }
   @keyframes abrir { from { opacity: 0; } to { opacity: 1; } }
@@ -209,6 +247,10 @@
 <body>
 <header class="barra">
   <h1>Mapa de nómina</h1>
+  <nav class="pestanas" role="tablist" aria-label="Modo">
+    <button type="button" role="tab" id="tab-log" aria-selected="true">Log de la calc</button>
+    <button type="button" role="tab" id="tab-esq" aria-selected="false">Esquema del cliente</button>
+  </nav>
   <select id="cliente" aria-label="Cliente" hidden></select>
   <span class="fuente" id="fuente">Sin datos cargados</span>
   <div class="derecha">
@@ -219,7 +261,17 @@
   </div>
 </header>
 
-<form class="busqueda" id="form-busqueda" autocomplete="off">
+<form class="busqueda" id="form-log" autocomplete="off">
+  <label>Concepto o variable del log
+    <input type="search" id="q-log" placeholder="3645" spellcheck="false" list="dl-log" disabled>
+    <datalist id="dl-log"></datalist>
+  </label>
+  <label class="check"><input type="checkbox" id="todos-log"> Mostrar pasos donde solo pasa</label>
+  <button class="btn primario" type="submit" id="btn-buscar-log" disabled>Ver recorrido</button>
+  <span class="info-log" id="info-log"></span>
+</form>
+
+<form class="busqueda" id="form-busqueda" autocomplete="off" hidden>
   <label>Concepto, &amp;variable o regla
     <input type="search" id="q" placeholder="/110" spellcheck="false" required>
   </label>

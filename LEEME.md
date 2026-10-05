@@ -2,6 +2,10 @@
 
 Muestra, para cada concepto de un cliente, por dónde pasa en el esquema de nómina: quién lo crea, qué le hace cada regla, dónde entra en la RT y a qué acumula. Las reglas se ven traducidas y como árbol de decisiones.
 
+Tiene dos pestañas:
+- **Log de la calc** (la principal): pegás o soltás el log de la PC00_M29_CALC de un empleado y elegís un concepto. Muestra lo que pasó de verdad: dónde nace, en qué pasos cambia (tabla, antes y después, con importes), dónde entra en RT y las líneas de regla que corrieron, traducidas. Funciona sin cliente; si además elegís el cliente, cada paso se ubica en el esquema y se pueden abrir las reglas completas. **El log se lee solo en el navegador: no se guarda ni se sube** (tiene datos personales). "Copiar para IA" no incluye el nombre del empleado.
+- **Esquema del cliente**: el recorrido posible según la configuración (todas las ramas). Con un log cargado, los pasos que no corrieron quedan en gris.
+
 ## Clientes
 Al abrir la página se listan los clientes de tres lugares y se usa la versión más nueva de cada uno:
 1. **Publicados con la página**: carpeta `clientes/` (índice en `clientes/clientes.json`). Hoy: Halliburton (2900).
@@ -21,6 +25,7 @@ El cliente no hace falta escribirlo exacto: "halli", "HAL" o "Halliburton Arg." 
 En esta carpeta: `npx serve .` y abrir http://localhost:3000 (no funciona abriendo index.html con doble clic).
 
 Pruebas del motor: `node test/probar.mjs clientes/HAL/rpdasc00.txt clientes/HAL/t512w.txt`.
+Lector del log (con el log en `calc.txt`, que no se commitea): `node test/probar-log.mjs calc.txt 3645 clientes/HAL/rpdasc00.txt`.
 
 ## Publicar
 1. GitHub → Settings → Pages → Deploy from branch → master / root.
@@ -32,3 +37,5 @@ Pruebas del motor: `node test/probar.mjs clientes/HAL/rpdasc00.txt clientes/HAL/
 - Las ramas `VWTCL nn` se resuelven con la T512W vigente a la fecha elegida; las demás decisiones (AMT?, VAKEY, OUTWP…) se muestran todas.
 - La operación de cliente `&GVPCCnn` se interpreta como decisión por clase de tratamiento nn.
 - Si un concepto no aparece en ninguna regla, lo genera una función estándar (ARSES, ARTAX, acumulaciones): revisar el log.
+- Las funciones de infotipo (P0014, P0015…) con línea genérica se muestran: ahí nace el concepto si el empleado lo tiene en ese infotipo.
+- `VALBSn` cuenta como valorización.
