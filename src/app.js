@@ -462,6 +462,7 @@ function setModo(modo, render = true) {
   $('#tab-esq').setAttribute('aria-selected', String(modo === 'esquema'));
   $('#form-log').hidden = modo !== 'log';
   $('#form-busqueda').hidden = modo !== 'esquema';
+  document.body.classList.toggle('modo-log', modo === 'log');   // en el log no se muestra nada del cliente
   if (!render) return;
   if (modo === 'log') renderLog();
   else if (!estado.modelo) { mostrarVacio(estado.clientes.length ? 'Elegí un cliente' : 'Cargá un cliente para empezar', 'Elegí un cliente en la barra de arriba o cargalo con "Cargar cliente".'); }
@@ -744,7 +745,7 @@ $('#cliente').addEventListener('change', e => abrirCliente(e.target.value));
 (async () => {
   fetch('catalogo/escala-ganancias.json').then(r => (r.ok ? r.json() : null)).then(d => { estado.escalas = d; }).catch(() => {});
   fetch('catalogo/funciones-29.json').then(r => (r.ok ? r.json() : null)).then(d => { estado.catalogo = d?.funciones ?? null; }).catch(() => {});
-  setModo(location.hash.length > 1 && !location.hash.startsWith('#log') ? 'esquema' : (leerLS('modo') || 'log'));
+  setModo('log');   // siempre arranca en el log de la calc
   await refrescarUsuario(null);
   if (nube.configurada()) {
     try { await nube.alCambiarSesion(refrescarUsuario); refrescarUsuario(await sesionActiva()); }
