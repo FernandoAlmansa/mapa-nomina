@@ -12,7 +12,7 @@ Al abrir la página se listan los clientes de tres lugares y se usa la versión 
 2. **Del equipo**: los que alguien guardó en Supabase con "Guardar para el equipo" (pide ingresar con mail @hmconsulting.com.ar).
 3. **De este navegador**: todo lo que cargás con "Ver y guardar en este navegador" queda guardado ahí.
 
-Se abre solo el último cliente que usaste.
+Al entrar no se abre ningún cliente: lo elegís en la barra de arriba (el log de la calc no lo necesita).
 
 ## Cargar o actualizar un cliente
 "Cargar cliente" → pegar (Ctrl/⌘+V) o soltar los dos insumos, en cualquier orden y con cualquier nombre de archivo:

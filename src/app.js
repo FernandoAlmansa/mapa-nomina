@@ -72,8 +72,8 @@ async function cargarListaClientes(abrir) {
   if (errores.length) console.warn('Lista de clientes:', errores);
   if (estado.clienteId) sel.value = estado.clienteId;
   if (abrir === false) return errores;
-  // Al entrar: el último cliente que usaste, o el único que haya
-  const id = abrir || leerLS('cliente') || (clientes.length === 1 ? clientes[0].id : '');
+  // Al entrar no se abre ningún cliente: se elige en la barra de arriba
+  const id = abrir;
   if (id && clientes.some(c => c.id === id)) await abrirCliente(id);
   else if (!estado.modelo) mostrarVacio(clientes.length ? 'Elegí un cliente' : 'Cargá un cliente para empezar',
     clientes.length ? 'Elegí un cliente en la barra de arriba. Si el tuyo no está, cargalo con "Cargar cliente".'
@@ -403,7 +403,7 @@ function mostrarConcepto(cc) {
       <div class="escenario-nota">Mirando: <b>${esc(describirEscenario(esc_))}</b>${res.fueraDeEscenario ? ` · ${res.fueraDeEscenario} pasos ocultos porque no corren en esta nómina` : ''}${esquemaDelLog() ? ` · con el log cargado (${esc(estado.log.periodos[0]?.periodo ?? '')}): los pasos que no corrieron quedan en gris` : ''}</div>
       ${resumen ? `<h3 class="titulo-sec">Qué le pasa, en orden</h3>${resumen}` : ''}
       <h3 class="titulo-sec">Detalle paso por paso</h3>
-      <p class="resumen">${eventos.length} pasos${ocultos ? `, ${ocultos} ocultos donde solo sigue sin cambios` : ''}. Agrupación ${esc(res.esg)}, clases al ${esc(fechaAR(res.fecha))}.</p>
+      <p class="resumen">${eventos.length} pasos${ocultos ? ` (no se muestran ${ocultos} donde solo sigue sin cambios)` : ''}.</p>
       ${eventos.length ? `<ol class="traza">${eventos.map(e => htmlEvento(e, e === res.entradaRT, res.cc)).join('')}</ol>`
         : `<p>No hay reglas del esquema que mencionen ${esc(cc)} en esta nómina. Si aparece en la RT, lo genera una función estándar (por ejemplo ARSES, ARTAX o una acumulación): revisá el log de la liquidación.</p>`}
     </section>`;
@@ -682,7 +682,7 @@ $('#principal').addEventListener('click', e => {
     e.preventDefault();
     const destino = document.getElementById('paso-' + l.dataset.paso);
     if (destino) { destino.scrollIntoView({ behavior: 'smooth', block: 'start' }); destino.classList.add('resaltado'); setTimeout(() => destino.classList.remove('resaltado'), 1600); }
-    else aviso('Ese paso está oculto: tildá "Mostrar pasos donde solo sigue"');
+    else aviso('Ese paso no cambia el concepto: no se muestra en el detalle');
     return;
   }
   if (e.target.closest('[data-accion=buscar]')) { $('#q-log').focus(); return; }

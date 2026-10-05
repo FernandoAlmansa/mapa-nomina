@@ -380,19 +380,15 @@
   <label>Concepto, &amp;variable o regla
     <input type="search" id="q" placeholder="/110" spellcheck="false" required>
   </label>
-  <label>Clases vigentes al
-    <input type="date" id="fecha">
-  </label>
+  <input type="hidden" id="fecha">
   <label>Nómina
     <select id="nomina"><option value="regular">Nómina regular</option></select>
   </label>
   <label>Período
     <select id="periodo"><option value="actual">Actual</option><option value="retro">Retroactivo (recálculo)</option></select>
   </label>
-  <label>Agrupación de reglas
-    <select id="esg"></select>
-  </label>
-  <label class="check"><input type="checkbox" id="todos"> Mostrar pasos donde solo sigue</label>
+  <select id="esg" style="display:none" aria-hidden="true"></select>
+  <input type="checkbox" id="todos" style="display:none" aria-hidden="true">
   <button class="btn primario" type="submit">Buscar</button>
 </form>
 
