@@ -305,6 +305,32 @@
   .paso-log.solo-pasa details.tecnico { display: none; }
   details.ficha-corta { margin-top: .4rem; } details.ficha-corta p { margin: .3rem 0; font-size: .86rem; }
   .pie-camino { margin-top: 1rem; }
+  .sintomas .tema { min-width: 13rem; }
+  .sintomas .tema span { color: var(--tenue); font-size: .82rem; }
+  .resumen-retro { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; background: var(--hoja); border: 1px solid var(--linea); border-radius: 6px; padding: .7rem 1rem; margin: .5rem 0; }
+  .resumen-retro > div:not(.op-retro) { display: grid; }
+  .resumen-retro b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .op-retro { font-size: 1.3rem; color: var(--tenue); }
+  .tabla-rt td.neg { color: var(--elim); }
+  details.mas-retro { margin: 1rem 0; }
+  details.mas-retro summary { cursor: pointer; color: var(--tenue); font-size: .9rem; }
+  .chequeos { background: var(--hoja); border: 1px solid var(--linea); border-radius: 6px; padding: .6rem .9rem; margin-bottom: 1rem; }
+  .ch-cab { display: flex; flex-wrap: wrap; gap: .3rem .75rem; align-items: baseline; }
+  .ch-cab .titulo-sec { margin: 0; }
+  .confianza { font-size: .75rem; font-weight: 600; padding: .05rem .55rem; border-radius: 10px; }
+  .c-alta { background: var(--crea-f); color: var(--crea); } .c-media { background: #fbefc9; color: #7a5400; } .c-baja { background: var(--elim-f); color: var(--elim); }
+  .chequeos ul { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .35rem; }
+  .chequeos li { display: grid; grid-template-columns: 1.4rem 1fr; gap: .4rem; font-size: .9rem; }
+  .chequeos li p { margin: .1rem 0 0; color: var(--tenue); font-size: .84rem; }
+  .ch-ic { width: 1.25rem; height: 1.25rem; border-radius: 50%; display: grid; place-items: center; font-size: .75rem; font-weight: 700; }
+  .ch-ok .ch-ic { background: var(--crea-f); color: var(--crea); } .ch-atencion .ch-ic { background: var(--elim-f); color: var(--elim); }
+  .ch-info .ch-ic { background: var(--lee-f); color: var(--lee); } .ch-nd .ch-ic { background: #fbefc9; color: #7a5400; }
+  ul.lista-msg { display: grid; gap: .5rem; padding-left: 1.2rem; font-size: .9rem; }
+  ol.pasos-sap { margin: .25rem 0 1rem; padding-left: 1.4rem; display: grid; gap: .5rem; font-size: .92rem; }
+  ol.pasos-sap figure { margin: .5rem 0 .25rem; }
+  ol.pasos-sap img { display: block; max-width: 100%; height: auto; border: 1px solid var(--linea); border-radius: 4px; }
+  ol.pasos-sap img.chica { max-width: 220px; }
+  .carga-log { max-width: 80ch; }
   .paso-log.secundario { background: transparent; }
   .paso-log.secundario .pl-que { color: var(--tenue); }
   .como { color: var(--tenue); font-size: .86rem; }

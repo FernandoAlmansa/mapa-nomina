@@ -31,7 +31,7 @@ function explicarARTAX(log, paso, { escalas } = {}) {
   if (!salida) return null;
   const sale = cc => sumaConcepto(salida, cc);
   const hay = cc => salida.porCC?.has(cc);
-  if (hay('/4T3') || hay('/4TT')) return { titulo: 'ARTAX — Ley 27.725 (cedular)', nota: 'Este log usa el método de la Ley 27.725: el recálculo automático todavía no está armado para ese método.', bloques: [] };
+  if (hay('/4T3') || hay('/4T4') || hay('/4T5')) return explicarARTAX27725(log, paso, salida);
   if (!hay('/4T0')) return { titulo: 'ARTAX', nota: 'ARTAX no generó /4T0: no calculó. Revisá ARIMP-IMPUE (empleado sujeto al impuesto) y la categoría de off-cycle (anticipos sin impuesto).', bloques: [] };
   const acc = acumulador(log, paso);
   const suma = (lista, signo = 1) => lista.map(cc => ({ ...acc(cc), signo }));
@@ -81,6 +81,32 @@ function explicarARTAX(log, paso, { escalas } = {}) {
       { titulo: 'Ganancia bruta', filas: ingresos, total: bruto },
       { titulo: 'Deducciones', filas: deduc, total: deducciones },
     ],
+    resultados,
+  };
+}
+
+// ARTAX con el método de la Ley 27.725 (CL_HRPAYAR_TAX_CALC_PROC_C_060): sin deducciones personales; exento hasta
+// 15 SMVM × mes del año (lo usado va a /4T4); lo que excede es la ganancia sujeta y va a la escala (grupo estándar).
+function explicarARTAX27725(log, paso, salida) {
+  const sale = cc => sumaConcepto(salida, cc);
+  const acc = acumulador(log, paso);
+  const ingresos = ['/156', 'OEGB', '/4S0', '/4S1', '/4S2', '/4S4', '/4S6'].map(cc => ({ ...acc(cc), signo: 1 })).filter(f => f.total);
+  const bruto = ingresos.reduce((n, f) => n + f.total, 0);
+  const mes = +(log.periodos[0]?.periodo ?? '').split('/')[0] || null;
+  const smvm = sale('/4T5') || sale('/4T3');
+  const exento = mes && smvm ? smvm * 15 * mes : null;
+  const r4T4 = sale('/4T4'), r4T0 = sale('/4T0'), r4T1 = sale('/4T1'), r4T2 = sale('/4T2');
+  const resultados = [];
+  if (exento != null) resultados.push({ cc: '/4T4', nombre: `Exento usado = el menor entre la bruta (${fmt(bruto)}) y 15 SMVM × ${mes} meses (15 × ${fmt(smvm)} × ${mes} = ${fmt(exento)})`, calculado: Math.min(bruto, exento), real: r4T4,
+    nota: 'La bruta no coincide: revisá /156 y SAC (/4S*) acumulados, o si hay deducciones que se restan antes (en este método se restan de la bruta antes del exento).' });
+  resultados.push({ cc: '/4T0', nombre: 'Ganancia sujeta = bruta − exento usado', calculado: Math.max(0, bruto - r4T4), real: r4T0,
+    nota: 'Con el exento de SAP no cierra: hay deducciones o ingresos (horas extra exentas, otros empleadores) que entran en otro concepto.' });
+  if (r4T1 || r4T2) resultados.push({ cc: '/4T2', nombre: 'Impuesto del mes = /4T1 − ya retenido en el año (/4T2 del CRT)', calculado: r4T1 - acc('/4T2').crt, real: r4T2 });
+  return {
+    titulo: 'Cómo calculó ARTAX (método Ley 27.725)',
+    nota: `Este método no usa las deducciones personales (DP01): deja exento hasta 15 salarios mínimos (SMVM ${fmt(smvm)}, constante SMVMN/SMVMS de T511P) por mes del año, y solo lo que excede va a la escala.${!r4T0 && !r4T2 ? ' Acá la bruta no supera el exento: no hay impuesto.' : ''}`,
+    aviso: { titulo: `ARTAX usó el método de la Ley 27.725 en ${log.periodos[0]?.periodo ?? 'este período'}`, detalle: `La Ley 27.743 (2024) volvió al cálculo con deducciones personales (/4T8, DP01). Si este empleado debería liquidarse con la 27.743, revisá T5F99K2 a la fecha de pago${smvm ? ` y el SMVM de referencia (${fmt(smvm)})` : ''}.` },
+    bloques: [{ titulo: 'Ganancia bruta', filas: ingresos, total: bruto }],
     resultados,
   };
 }

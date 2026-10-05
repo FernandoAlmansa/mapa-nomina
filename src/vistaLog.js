@@ -24,8 +24,17 @@ export function htmlCargaLog(error = '') {
       </div>
     </div>
     ${error ? `<div class="estado-carga error">${error}</div>` : ''}
-    <p class="nota">En SAP: corré la calc con log, expandí todo y guardá la lista como archivo local (texto).
-      El log tiene datos personales: se lee <b>solo en este navegador</b>, no se guarda ni se sube a ningún lado y se pierde al cerrar la pestaña.</p>
+    <h3 class="titulo-sec">Cómo sacar el log de SAP</h3>
+    <ol class="pasos-sap">
+      <li>Corré la <b>PC00_M29_CALC</b> para el empleado con <b>Mostrar log</b> tildado.</li>
+      <li>En la <i>Vista detallada del log</i>, tocá <b>Expandir todo</b> (las flechas dobles hacia abajo, marcadas abajo). Si no, la copia sale sin las tablas.</li>
+      <li>En el campo de comandos escribí <kbd>%pc</kbd> y apretá Enter.
+        <figure><img src="img/sap-log-1.png" alt="Vista detallada del log en SAP: botón Expandir todo marcado y %pc escrito en el campo de comandos" loading="lazy" width="1041" height="182"></figure></li>
+      <li>En <i>Grabar lista fichero</i> elegí <b>Portapapeles</b> y confirmá con el tilde verde.
+        <figure><img src="img/sap-log-2.png" alt="Ventana Grabar lista fichero con la opción Portapapeles elegida" loading="lazy" width="271" height="298" class="chica"></figure></li>
+      <li>Volvé acá y pegá con <kbd>Ctrl</kbd>+<kbd>V</kbd>. Si preferís un archivo, elegí <b>No convertido</b> en el paso 4 y soltalo arriba.</li>
+    </ol>
+    <p class="nota">El log tiene datos personales: se lee <b>solo en este navegador</b>, no se guarda ni se sube a ningún lado y se pierde al cerrar la pestaña.</p>
     <p class="nota">Si además elegís el cliente en la barra de arriba, cada paso muestra su ubicación en el esquema y podés abrir las reglas completas.</p>
   </section>`;
 }
@@ -37,11 +46,7 @@ export function describirLog(log, alin, nombreCliente) {
   if (per) partes.push(`<b>${esc(per.periodo)}</b> (${esc(per.desde)} – ${esc(per.hasta)}) · ${esc(per.texto)}`);
   if (log.periodos.length > 1) partes.push(`${log.periodos.length} períodos en el log`);
   partes.push(`${log.pasos.length.toLocaleString('es-AR')} pasos`);
-  if (alin && nombreCliente) {
-    const pct = alin.total ? alin.alineados / alin.total : 0;
-    partes.push(pct > 0.9 ? `esquema de ${esc(nombreCliente)}: ${alin.alineados} de ${alin.total} pasos ubicados`
-      : `<span class="cond duda">el esquema de ${esc(nombreCliente)} no coincide con el log (${alin.alineados} de ${alin.total} pasos)</span>`);
-  } else partes.push('sin esquema del cliente');
+  if (alin && nombreCliente) partes.push(`con el esquema de ${esc(nombreCliente)}`);
   return partes.join(' · ');
 }
 
@@ -52,14 +57,7 @@ const filasHTML = (t, filas) => filas.map(f => {
 }).join('');
 
 // ---------------------------------------------------------------- pantalla inicial con el log cargado
-// Atajos a los temas que más llegan en tickets (solo los que están en la RT de este log)
-const TEMAS = [
-  ['/560', 'Neto a cobrar'], ['/101', 'Bruto'], ['/4T2', 'Ganancias del mes'], ['/321', 'Aporte jubilatorio'],
-  ['/361', 'Aporte obra social'], ['/320', 'Contribución SIJP'], ['/S01', 'SAC'], ['/550', 'Neto'],
-];
-export function htmlInicioLog(log, rt, nota) {
-  const enRT = new Set(rt ? rt.t.filas.map(f => f.slice(3, 7).trim()) : []);
-  const temas = TEMAS.filter(([cc]) => enRT.has(cc));
+export function htmlInicioLog(log, rt, nota, { sintomas = [], avisos = [], retro = null } = {}) {
   const filas = rt ? rt.t.filas.map(f => {
     const cc = f.slice(3, 7).trim();
     const n = numerosFila(rt.t, f);
@@ -69,9 +67,10 @@ export function htmlInicioLog(log, rt, nota) {
   }).join('') : '';
   return `<section class="vista-log inicio-log">
     <p class="nota-log">${nota}</p>
-    <h2 class="pregunta">¿Qué concepto querés entender?</h2>
-    <p class="nota">Escribilo arriba o tocalo en la RT. Te muestro de dónde sale su importe, paso por paso, con la regla o la función que lo tocó.</p>
-    ${temas.length ? `<div class="temas">${temas.map(([cc, t]) => `<button type="button" class="tema" data-q="${esc(cc)}"><b>${esc(t)}</b><code>${esc(cc)}</code></button>`).join('')}</div>` : ''}
+    ${avisos.map(a => `<div class="estado-carga error">${esc(a)}</div>`).join('')}
+    ${retro?.esRetro ? `<div class="estado-carga">Este log es el <b>recálculo de ${esc(retro.periodo)}</b> dentro de la nómina ${esc(retro.enNomina)}: en la RT queda lo ya pagado y la diferencia viaja como /551. <button type="button" class="btn btn-chico" data-q="!RETRO">Ver qué cambió</button></div>` : ''}
+    <h2 class="pregunta">¿Qué te reclaman?</h2>
+    <div class="temas sintomas">${sintomas.map(x => `<button type="button" class="tema" ${x.destino ? `data-q="${esc(x.destino)}"` : 'data-accion="buscar"'}><b>${esc(x.titulo)}</b><span>${esc(x.sub)}</span></button>`).join('')}</div>
     ${rt ? `<div class="cab-rt"><h3 class="titulo-sec">RT final · ${rt.t.filas.length} líneas</h3>
       <input type="search" class="filtro-cc" id="filtro-rt" placeholder="Filtrar por concepto o texto" aria-label="Filtrar la RT"></div>
       <div class="tabla-scroll"><table class="tabla-rt"><thead><tr><th>CC</th><th>Texto</th><th class="n">Cantidad</th><th class="n">Importe</th></tr></thead><tbody>${filas}</tbody></table></div>`
@@ -238,7 +237,7 @@ function htmlExplicacion(log, paso, ctx, escalas, ccActual = '') {
   const noCierra = x.resultados?.some(r => r.calculado != null && Math.abs(r.calculado - r.real) >= 0.02);
   const anual = x.bloques.some(b => b.filas.some(f => f.crt));
   const tabla = x.bloques.length ? `<div class="tabla-scroll"><table class="tabla-rt tabla-exp"><thead><tr><th>Concepto</th>${anual ? '<th class="n">Este mes (IT)</th><th class="n">Año (CRT)</th>' : '<th></th><th></th>'}<th class="n">${anual ? 'Suma' : 'Importe'}</th></tr></thead><tbody>${x.bloques.map(bloque).join('')}</tbody></table></div>` : '';
-  return `<details class="explicacion" open><summary>${esc(x.titulo)}${x.resultados?.length ? (noCierra ? ' <span class="ef elim">algo no cierra</span>' : ' <span class="ef crea">todo cierra</span>') : ''}</summary>
+  return `<details class="explicacion"${noCierra || !x.resultados?.length ? ' open' : ''}><summary>${esc(x.titulo)}${x.resultados?.length ? (noCierra ? ' <span class="ef elim">algo no cierra</span>' : ' <span class="ef crea">todo cierra</span>') : ''}</summary>
     ${res ? `<ul class="exp-res">${res}</ul>` : ''}${lista ? `<details class="exp-tabla"><summary>Ver todos (${x.lista.length}) con su % y base</summary>${lista}</details>` : ''}
     ${tabla ? (x.resultados?.length ? `<details class="exp-tabla"${noCierra ? ' open' : ''}><summary>De dónde salen los importes</summary>${tabla}</details>` : tabla) : ''}
     ${x.nota ? `<p class="nota">${esc(x.nota)}</p>` : ''}</details>`;
@@ -288,7 +287,19 @@ function htmlTecnico(e, res, { ctx, hayModelo, catalogo }) {
       ${crudas.length ? `<details class="crudo"><summary>Líneas crudas</summary><pre class="regla">${esc(crudas.join('\n'))}</pre></details>` : ''}</div>`;
 }
 
-export function htmlConceptoLog(log, res, { ctx, etiqueta, ruta, nota, todos, hayModelo, textoT512, catalogo = null, escalas = null }) {
+const ICONO = { ok: '✓', atencion: '!', info: 'i', nd: '?' };
+function htmlChequeos(ch) {
+  if (!ch?.items.length || (ch.items.length <= 1 && ch.items.every(i => i.estado === 'ok'))) return '';
+  const c = ch.confianza;
+  return `<section class="chequeos">
+    <div class="ch-cab"><h3 class="titulo-sec">Chequeos</h3>
+      <span class="confianza c-${c.nivel}" title="${esc(c.falta.length ? 'Falta: ' + c.falta.join('; ') : '')}">Confianza ${c.nivel}</span>
+      <span class="nota">${esc(c.texto)}${c.falta.length ? `. Falta: ${esc(c.falta.join('; '))}` : ''}.</span></div>
+    <ul>${ch.items.map(i => `<li class="ch-${i.estado}"><span class="ch-ic" aria-hidden="true">${ICONO[i.estado]}</span><div><b>${esc(i.titulo)}</b>${i.detalle ? `<p>${esc(i.detalle)}</p>` : ''}</div></li>`).join('')}</ul>
+  </section>`;
+}
+
+export function htmlConceptoLog(log, res, { ctx, etiqueta, ruta, nota, todos, hayModelo, textoT512, catalogo = null, escalas = null, chequeos = null }) {
   const texto = res.texto || textoT512 || '';
   const relevantes = res.eventos.filter(e => e.relevante);
   const visibles = todos ? res.eventos : relevantes;
@@ -354,8 +365,81 @@ export function htmlConceptoLog(log, res, { ctx, etiqueta, ruta, nota, todos, ha
   return `<section class="vista-log vista-cc">
     <p class="nota-log">${nota}</p>
     ${cabecera}
+    ${htmlChequeos(chequeos)}
     <h3 class="titulo-sec">De dónde sale</h3>
     ${visibles.length ? `<ol class="camino">${visibles.map(fila).join('')}</ol>` : `<p>En este log ${esc(res.cc)} no cambia en ningún paso.</p>`}
     <p class="nota pie-camino">${sinCambios ? `${todos ? 'Se muestran' : 'Hay'} ${sinCambios} pasos más donde ${esc(res.cc)} solo pasa sin cambios${todos ? '' : ' (tildá "Mostrar pasos donde solo pasa" para verlos)'}.` : ''}</p>
+  </section>`;
+}
+
+// ---------------------------------------------------------------- páginas por síntoma
+const volver = '<a href="#" class="volver" id="volver-rt">← Inicio de la calc</a>';
+
+export function htmlAportes(log, x, ctx) {
+  if (!x?.lista?.length) return `<section class="vista-log">${volver}<h2 class="pregunta">Aportes y contribuciones</h2><p>No encontré la función ARSES en este log.</p></section>`;
+  const PREF = ['/384', '/380', '/BC2', '/102'];
+  const filas = x.lista.map(r => {
+    const bases = r.fo?.bases ? [...r.fo.bases].sort((a, b) => (PREF.indexOf(a) + 1 || 99) - (PREF.indexOf(b) + 1 || 99)) : [];
+    return `<tr data-q="${esc(r.cc)}" tabindex="0"><td><code>${esc(r.cc)}</code></td><td>${esc(r.texto)}${r.splits ? ` <span class="nota">split ${esc(r.splits)}</span>` : ''}</td>
+      <td>${r.fo?.tipo === 'pct' ? `${r.fo.pct.toLocaleString('es-AR', { maximumFractionDigits: 4 })} % × ${fmtN(r.fo.importeBase)} <span class="nota">${esc(bases.slice(0, 2).join(' / '))}</span>` : '<span class="nota">importe fijo o sin base visible</span>'}</td>
+      <td class="n">${fmtN(r.importe)}</td></tr>`;
+  }).join('');
+  return `<section class="vista-log">${volver}
+    <h2 class="pregunta">Aportes y contribuciones</h2>
+    <p class="nota">${esc(x.nota)}</p>
+    <p class="nota">Tocá uno para ver de dónde sale y si una regla lo cambia después de ARSES.</p>
+    <div class="tabla-scroll"><table class="tabla-rt"><thead><tr><th>CC</th><th>Texto</th><th>% × base</th><th class="n">Importe</th></tr></thead><tbody>${filas}</tbody></table></div>
+  </section>`;
+}
+
+const filaCambio = c => `<tr data-q="${esc(c.cc)}" data-texto="${esc((c.cc + ' ' + c.texto).toLowerCase())}" tabindex="0"><td><code>${esc(c.cc)}</code></td><td>${esc(c.texto)}</td>
+  <td class="n">${fmtN(c.antes)}</td><td class="n">${fmtN(c.despues)}</td><td class="n ${c.dif < 0 ? 'neg' : ''}">${c.dif > 0 ? '+' : ''}${fmtN(c.dif)}</td></tr>`;
+const tablaCambios = filas => `<div class="tabla-scroll"><table class="tabla-rt"><thead><tr><th>CC</th><th>Texto</th><th class="n">Ya liquidado</th><th class="n">Recalculado</th><th class="n">Diferencia</th></tr></thead><tbody>${filas.map(filaCambio).join('')}</tbody></table></div>`;
+const TOTALES_RETRO = ['/101', '/102', '/156', '/4T0', '/4T2', '/321', '/351', '/361', '/399'];
+
+export function htmlRetro(d) {
+  const ip = d.info;
+  const dt = d.diferencias.length ? `<div class="tabla-scroll"><table class="tabla-rt"><thead><tr><th>CC</th><th>Texto</th><th>Período</th><th>${ip?.esRetro ? 'Dónde' : 'Entra al cálculo en'}</th><th class="n">Importe</th></tr></thead><tbody>
+      ${d.diferencias.map(x => `<tr data-q="${esc(x.cc)}" tabindex="0"><td><code>${esc(x.cc)}</code></td><td>${esc(x.texto)}</td><td>${esc(x.periodo)}</td><td>${esc(x.entra ?? '—')}</td><td class="n">${fmtN(x.importe)}</td></tr>`).join('')}
+      </tbody></table></div>` : '';
+  if (ip?.esRetro) {
+    const r = d.resumen ?? {};
+    const totales = TOTALES_RETRO.map(cc => d.cambios.find(c => c.cc === cc)).filter(Boolean);
+    const pagos = d.cambios.filter(c => !c.cc.startsWith('/'));
+    return `<section class="vista-log">${volver}
+    <h2 class="pregunta">Recálculo de ${esc(ip.periodo)} <span class="nota">dentro de la nómina ${esc(ip.enNomina)}</span></h2>
+    ${r.pagado != null && r.dif != null ? `<div class="resumen-retro">
+      <div><span class="nota">Neto recalculado</span><b>${fmtN(r.pagado + r.dif)}</b></div><div class="op-retro">−</div>
+      <div><span class="nota">Ya pagado (ORT /560)</span><b>${fmtN(r.pagado)}</b></div><div class="op-retro">=</div>
+      <div><span class="nota">Diferencia /551</span><b>${fmtN(r.dif)}</b></div></div>
+      <p class="nota">La diferencia va a la tabla DT y se ${r.dif < 0 ? 'descuenta' : 'paga'} en la nómina ${esc(ip.enNomina)} (en el log de ${esc(ip.enNomina)} aparece como /551 ${esc(ip.periodo)}). En la RT de ${esc(ip.periodo)} el /560 queda con lo ya pagado.</p>` : ''}
+    ${d.cambios.length ? `${totales.length ? `<h3 class="titulo-sec">Totales que cambiaron</h3>${tablaCambios(totales)}` : ''}
+      ${pagos.length ? `<h3 class="titulo-sec">Conceptos que cambiaron · ${pagos.length}</h3>
+        <p class="nota">Ya liquidado (ORT, el resultado original de ${esc(ip.periodo)}) contra lo que da ahora (RT final). Acá suele estar el dato que disparó el retroactivo. Tocá uno para ver de dónde sale.</p>
+        <input type="search" class="filtro-cc" id="filtro-retro" placeholder="Filtrar por concepto o texto" aria-label="Filtrar conceptos que cambiaron">
+        ${tablaCambios(pagos)}` : ''}
+      <details class="mas-retro"><summary>Ver también los conceptos técnicos (/xxx) que cambiaron · ${d.cambios.length - pagos.length}</summary>${tablaCambios(d.cambios.filter(c => c.cc.startsWith('/')))}</details>`
+      : '<p class="nota">No encontré la tabla ORT (resultado original) en el log: no puedo comparar concepto por concepto.</p>'}
+    ${dt ? `<h3 class="titulo-sec">Diferencias que genera (tabla DT)</h3>${dt}` : ''}
+  </section>`;
+  }
+  const per = ip ? `${esc(ip.periodo)} de la nómina ${esc(ip.enNomina)}` : 'sin período';
+  const recalc = [...new Set(d.diferencias.map(x => x.periodo).filter(Boolean))];
+  return `<section class="vista-log">${volver}
+    <h2 class="pregunta">Retroactivo</h2>
+    <p>Este log es el período <b>${per}</b>.${recalc.length ? ` La corrida recalculó <b>${recalc.map(esc).join(', ')}</b>: las diferencias llegan por la tabla DT.` : ''}</p>
+    ${dt ? `<h3 class="titulo-sec">Diferencias de meses anteriores (tabla DT)</h3>${dt}
+      <p class="nota">Tocá una para ver por dónde entra al neto. Para ver qué cambió dentro de ${recalc.length ? recalc.map(esc).join(', ') : 'ese mes'}: en el PC00_M29_CALC cada período recalculado es un log aparte; copialo y cargalo acá.</p>`
+      : '<p class="nota">No trae diferencias de meses anteriores (tabla DT vacía): en esta corrida no hubo retroactivo que se pague o descuente en este período.</p>'}
+  </section>`;
+}
+
+export function htmlErrores(d) {
+  return `<section class="vista-log">${volver}
+    <h2 class="pregunta">Errores y avisos de la calc</h2>
+    ${d.integridad.map(a => `<div class="estado-carga error">${esc(a)}</div>`).join('')}
+    ${d.mensajes.length ? `<ul class="lista-msg">${d.mensajes.map(m => `<li><code>${esc(m.paso.func)} ${esc(m.paso.par[0] || '')}</code> <span class="nota">línea ${m.paso.linea.toLocaleString('es-AR')}</span><br>${esc(m.texto)}</li>`).join('')}</ul>`
+      : '<p>No encontré mensajes de error ni avisos en el log.</p>'}
+    <p class="nota">La calc llegó hasta <code>${esc(d.ultimo?.func ?? '')} ${esc(d.ultimo?.par.filter(Boolean).join(' ') ?? '')}</code>${d.ultimo?.texto ? ` (${esc(d.ultimo.texto)})` : ''}, el último paso del log.</p>
   </section>`;
 }

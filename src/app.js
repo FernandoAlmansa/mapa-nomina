@@ -9,7 +9,8 @@ import * as local from './local.js';
 import * as catalogo from './clientes.js';
 import { opcionesNomina, crearEscenario, estadoPaso, textoCondicion } from './escenario.js';
 import { pareceLog, parsearLog, alinear, analizarConcepto, rtFinal, contextoIALog } from './log.js';
-import { htmlCargaLog, htmlInicioLog, htmlConceptoLog, describirLog } from './vistaLog.js';
+import { htmlCargaLog, htmlInicioLog, htmlConceptoLog, describirLog, htmlAportes, htmlRetro, htmlErrores } from './vistaLog.js';
+import { sintomasDelLog, chequeosConcepto, integridad, diagnosticoRetro, diagnosticoError, infoPeriodo } from './sintomas.js';
 import { explicarPaso } from './explicar.js';
 
 const $ = s => document.querySelector(s);
@@ -399,7 +400,7 @@ function mostrarConcepto(cc) {
 
   $('#principal').innerHTML = `${htmlFicha(cc, res)}
     <section class="recorrido">
-      <div class="escenario-nota">Mirando: <b>${esc(describirEscenario(esc_))}</b>${res.fueraDeEscenario ? ` · ${res.fueraDeEscenario} pasos ocultos porque no corren en esta nómina` : ''}${estado.log && estado.alin?.alineados ? ` · con el log cargado (${esc(estado.log.periodos[0]?.periodo ?? '')}): los pasos que no corrieron quedan en gris` : ''}</div>
+      <div class="escenario-nota">Mirando: <b>${esc(describirEscenario(esc_))}</b>${res.fueraDeEscenario ? ` · ${res.fueraDeEscenario} pasos ocultos porque no corren en esta nómina` : ''}${esquemaDelLog() ? ` · con el log cargado (${esc(estado.log.periodos[0]?.periodo ?? '')}): los pasos que no corrieron quedan en gris` : ''}</div>
       ${resumen ? `<h3 class="titulo-sec">Qué le pasa, en orden</h3>${resumen}` : ''}
       <h3 class="titulo-sec">Detalle paso por paso</h3>
       <p class="resumen">${eventos.length} pasos${ocultos ? `, ${ocultos} ocultos donde solo sigue sin cambios` : ''}. Agrupación ${esc(res.esg)}, clases al ${esc(fechaAR(res.fecha))}.</p>
@@ -468,20 +469,24 @@ function setModo(modo, render = true) {
   else mostrarVacio('Buscá un concepto', 'Probá con /110, 1000 o una variable como &ZSAL. También podés escribir el nombre de una regla (por ejemplo X010) para verla completa.');
 }
 
-const pasoEsquema = p => (estado.modelo && p.idEsquema ? estado.modelo.pasos[p.idEsquema - 1] : null);
+// El cliente abierto solo se usa con el log si su esquema es el del log (≥ 90 % de los pasos ubicados).
+// Si no coincide (log de otro cliente), el log se muestra solo, sin avisos.
+const esquemaDelLog = () => Boolean(estado.log && estado.modelo && estado.alin?.total && estado.alin.alineados / estado.alin.total >= 0.9);
+const pasoEsquema = p => (esquemaDelLog() && p.idEsquema ? estado.modelo.pasos[p.idEsquema - 1] : null);
 const etiquetaLog = p => { const e = pasoEsquema(p); return e ? `${e.esquema} ${e.linea}` : `${p.func} ${p.par[0] || ''}`.trim(); };
 function rutaLog(p) {
   const e = pasoEsquema(p);
   if (e) return e.ruta.map(id => esc(etiquetaPaso(estado.modelo, id))).concat(`<b>${esc(e.esquema)} ${esc(e.linea)}</b>`).join(' › ');
   return p.titulos.length ? esc(p.titulos.join(' › ')) : '';
 }
-const notaLog = () => describirLog(estado.log, estado.modelo ? estado.alin : null, estado.modelo ? estado.nombre : '');
+const notaLog = () => describirLog(estado.log, esquemaDelLog() ? estado.alin : null, esquemaDelLog() ? estado.nombre : '');
 
 function pintarInfoLog() {
   const log = estado.log;
   $('#q-log').disabled = !log; $('#btn-buscar-log').disabled = !log;
   $('#info-log').innerHTML = log
     ? `<span>Log ${esc(log.periodos[0]?.periodo ?? '')} · ${(log.bytes / 1048576).toLocaleString('es-AR', { maximumFractionDigits: 1 })} MB · solo en esta pestaña</span>
+       <button class="btn btn-chico" type="button" id="btn-inicio-log">Inicio de la calc</button>
        <button class="btn btn-chico" type="button" id="btn-cambiar-log">Cambiar log</button>`
     : '';
   $('#dl-log').innerHTML = log ? [...log.conceptos].sort((a, b) => a[0].localeCompare(b[0])).map(([cc, t]) => `<option value="${esc(cc)}">${esc(t)}</option>`).join('') : '';
@@ -491,20 +496,43 @@ function renderLog(error = '') {
   const log = estado.log;
   if (!log) { $('#principal').innerHTML = htmlCargaLog(error); conectarZonaLog(); return; }
   if (!estado.logCC) {
-    $('#principal').innerHTML = htmlInicioLog(log, rtFinal(log), notaLog());
-    const filtro = $('#filtro-rt');
-    filtro?.addEventListener('input', () => {
-      const t = filtro.value.trim().toLowerCase();
-      document.querySelectorAll('.tabla-rt tbody tr').forEach(tr => { tr.hidden = Boolean(t) && !tr.dataset.texto.includes(t); });
-    });
+    $('#principal').innerHTML = htmlInicioLog(log, rtFinal(log), notaLog(), { sintomas: sintomasDelLog(log), avisos: integridad(log), retro: infoPeriodo(log) });
+    conectarFiltro('#filtro-rt');
     return;
   }
+  if (estado.logCC.startsWith('!')) { mostrarPaginaLog(estado.logCC); return; }
   mostrarConceptoLog(estado.logCC);
+}
+
+// Filtro de texto: oculta las filas de la primera tabla que sigue al campo
+function conectarFiltro(sel) {
+  const filtro = $(sel);
+  if (!filtro) return;
+  let el = filtro.nextElementSibling;
+  while (el && !el.querySelector?.('tbody') && !el.matches('.tabla-scroll')) el = el.nextElementSibling;
+  const tabla = el ?? filtro.closest('section');
+  filtro.addEventListener('input', () => {
+    const t = filtro.value.trim().toLowerCase();
+    tabla.querySelectorAll('tbody tr').forEach(tr => { tr.hidden = Boolean(t) && !tr.dataset.texto?.includes(t); });
+  });
+}
+
+// Páginas por síntoma que miran todo el log
+function mostrarPaginaLog(id) {
+  const log = estado.log;
+  const ctx = { modelo: null, t512w: null, fecha: fechaFinLog(), esg: '*' };
+  if (id === '!APORTES') {
+    const paso = log.pasos.find(p => p.func === 'ARSES');
+    $('#principal').innerHTML = htmlAportes(log, paso ? explicarPaso(log, paso) : null, ctx);
+  } else if (id === '!RETRO') { $('#principal').innerHTML = htmlRetro(diagnosticoRetro(log)); conectarFiltro('#filtro-retro'); }
+  else if (id === '!ERROR') $('#principal').innerHTML = htmlErrores(diagnosticoError(log));
+  else { irALog('', { reemplazar: true }); return; }
+  $('#volver-rt').onclick = ev => { ev.preventDefault(); irALog(''); };
 }
 
 // Estado de un paso del esquema según el log cargado (para la vista estática)
 function estadoEnLog(id, cc) {
-  if (!estado.log || !estado.alin?.alineados) return null;
+  if (!esquemaDelLog()) return null;
   const p = estado.modelo.pasos[id - 1];
   if (!esPorConcepto(p.func) && p.func !== 'ACTIO') return null;
   const lp = estado.log.pasos.find(x => x.idEsquema === id);
@@ -518,19 +546,33 @@ function mostrarConceptoLog(cc) {
   const res = analizarConcepto(log, cc);
   estado.logCC = res.cc;
   if (!res.eventos.length) {
-    $('#principal').innerHTML = `<section class="vacio"><h2>${esc(res.cc)} no aparece en el log</h2>
-      <p>No está en ninguna tabla ni lo procesa ninguna regla en este log. Revisá el código (los conceptos van sin & y las variables también, por ejemplo ZSAL).
-      ${estado.modelo ? 'Para ver dónde podría aparecer según la configuración, abrilo en la pestaña "Esquema del cliente".' : ''}</p></section>`;
+    // Parecidos: mismo comienzo de código o el texto contiene lo buscado
+    const q = res.cc.toLowerCase();
+    const parecidos = [...log.conceptos].filter(([cc, t]) => cc.toLowerCase().startsWith(q.slice(0, 2)) || (q.length >= 3 && t.toLowerCase().includes(q))).slice(0, 12);
+    $('#principal').innerHTML = `<section class="vista-log"><a href="#" class="volver" id="volver-rt">← Inicio de la calc</a>
+      <h2 class="pregunta">${esc(res.cc)} no aparece en este log</h2>
+      <p class="nota">No está en ninguna tabla ni lo procesa ninguna regla. Revisá el código (los conceptos y las variables van sin &, por ejemplo ZSAL).
+      ${esquemaDelLog() ? ' Para ver dónde podría aparecer según la configuración, abrilo en la pestaña "Esquema del cliente".' : ''}</p>
+      ${parecidos.length ? `<h3 class="titulo-sec">Quizás buscabas</h3><div class="temas">${parecidos.map(([cc, t]) => `<button type="button" class="tema" data-q="${esc(cc)}"><b>${esc(t || cc)}</b><code>${esc(cc)}</code></button>`).join('')}</div>` : ''}
+    </section>`;
+    $('#volver-rt').onclick = ev => { ev.preventDefault(); irALog(''); };
     return;
   }
-  const ctx = { modelo: estado.modelo, t512w: estado.t512w, fecha: fechaFinLog(), esg: '*' };
+  const conCliente = esquemaDelLog();
+  const ctx = { modelo: conCliente ? estado.modelo : null, t512w: conCliente ? estado.t512w : null, fecha: fechaFinLog(), esg: '*' };
   $('#principal').innerHTML = htmlConceptoLog(log, res, {
     ctx, etiqueta: etiquetaLog, ruta: rutaLog, nota: notaLog(), todos: $('#todos-log').checked,
-    hayModelo: Boolean(estado.modelo), textoT512: textoT512(res.cc), catalogo: estado.catalogo, escalas: estado.escalas,
+    hayModelo: conCliente, textoT512: conCliente ? textoT512(res.cc) : '',
+    chequeos: chequeosConcepto(log, res, { escalas: estado.escalas, conCliente }), catalogo: estado.catalogo, escalas: estado.escalas,
   });
   $('#btn-ia-log').onclick = async () => {
     const f2 = n => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const extra = [];
+    const ch = chequeosConcepto(log, res, { escalas: estado.escalas, conCliente });
+    if (ch.items.length) {
+      extra.push('', `## Chequeos (confianza ${ch.confianza.nivel}: ${ch.confianza.texto})`);
+      for (const i of ch.items) extra.push(`[${{ ok: 'OK', atencion: 'ATENCIÓN', info: 'INFO', nd: 'SIN DATO' }[i.estado]}] ${i.titulo}${i.detalle ? ' — ' + i.detalle : ''}`);
+    }
     for (const e of res.eventos.filter(x => x.relevante)) {
       const x = explicarPaso(log, e.paso, { escalas: estado.escalas });
       if (!x) continue;
@@ -540,7 +582,7 @@ function mostrarConceptoLog(cc) {
       for (const r of x.lista ?? []) if (r.cc === res.cc || x.lista.length <= 12) extra.push(`${r.cc}${r.splits ? ' split ' + r.splits : ''} ${f2(r.importe)}${r.fo?.tipo === 'pct' ? ` = ${r.fo.pct} % × ${f2(r.fo.importeBase)} (${r.fo.bases.join('/')})` : ''}`);
       if (x.nota) extra.push(x.nota);
     }
-    await navigator.clipboard.writeText(contextoIALog(log, res, { etiqueta: etiquetaLog, cliente: estado.modelo ? estado.nombre : '' }) + (extra.length ? '\n' + extra.join('\n') : ''));
+    await navigator.clipboard.writeText(contextoIALog(log, res, { etiqueta: etiquetaLog, cliente: conCliente ? estado.nombre : '' }) + (extra.length ? '\n' + extra.join('\n') : ''));
     aviso('Copiado (sin nombre del empleado): pegalo en el chat junto con el ticket');
   };
   $('#volver-rt').onclick = ev => { ev.preventDefault(); irALog(''); };
@@ -555,7 +597,7 @@ function irALog(cc, { reemplazar = false } = {}) {
   estado.logCC = cc;
   const url = cc ? '#log=' + encodeURIComponent(cc) : '#log';
   try { (reemplazar ? history.replaceState : history.pushState).call(history, { logCC: cc }, '', url); } catch { /* sin historial */ }
-  $('#q-log').value = cc;
+  $('#q-log').value = cc.startsWith('!') ? '' : cc;
   renderLog();
   window.scrollTo({ top: 0 });
 }
@@ -621,6 +663,7 @@ $('#todos-log').addEventListener('change', () => estado.log && estado.logCC && r
 $('#tab-log').onclick = () => setModo('log');
 $('#tab-esq').onclick = () => setModo('esquema');
 $('#form-log').addEventListener('click', e => {
+  if (e.target.id === 'btn-inicio-log') { irALog(''); return; }
   if (e.target.id === 'btn-cambiar-log') { estado.log = null; estado.logCC = ''; estado.alin = null; pintarInfoLog(); renderLog(); }
 });
 // Pegar el log en cualquier parte de la pantalla (menos en campos de texto y con un diálogo abierto)
@@ -642,16 +685,17 @@ $('#principal').addEventListener('click', e => {
     else aviso('Ese paso está oculto: tildá "Mostrar pasos donde solo sigue"');
     return;
   }
+  if (e.target.closest('[data-accion=buscar]')) { $('#q-log').focus(); return; }
   const b = e.target.closest('[data-q]');
   if (!b) return;
   if (estado.modo === 'log') {
     if (b.dataset.tipo === 'regla') {
-      if (!estado.modelo?.reglas[b.dataset.q]) { aviso(estado.modelo ? `La regla ${b.dataset.q} no está en el esquema cargado` : 'Elegí el cliente arriba para abrir la regla completa'); return; }
+      if (!esquemaDelLog() || !estado.modelo.reglas[b.dataset.q]) { aviso(esquemaDelLog() ? `La regla ${b.dataset.q} no está en el esquema cargado` : 'Para abrir la regla completa, elegí arriba el cliente de este log'); return; }
       setModo('esquema', false);
       $('#q').value = b.dataset.q;
       history.replaceState(null, '', '#' + encodeURIComponent(b.dataset.q));
       mostrarRegla(b.dataset.q);
-    } else irALog(b.dataset.q.replace(/^&/, '').toUpperCase());
+    } else irALog(b.dataset.q.startsWith('!') ? b.dataset.q : b.dataset.q.replace(/^&/, '').toUpperCase());
     window.scrollTo({ top: 0 });
     return;
   }
