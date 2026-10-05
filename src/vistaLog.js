@@ -27,12 +27,11 @@ export function htmlCargaLog(error = '') {
     <h3 class="titulo-sec">Cómo sacar el log de SAP</h3>
     <ol class="pasos-sap">
       <li>Corré la <b>PC00_M29_CALC</b> para el empleado con <b>Mostrar log</b> tildado.</li>
-      <li>En la <i>Vista detallada del log</i>, tocá <b>Expandir todo</b> (las flechas dobles hacia abajo, marcadas abajo). Si no, la copia sale sin las tablas.</li>
-      <li>En el campo de comandos escribí <kbd>%pc</kbd> y apretá Enter.
-        <figure><img src="img/sap-log-1.png" alt="Vista detallada del log en SAP: botón Expandir todo marcado y %pc escrito en el campo de comandos" loading="lazy" width="1041" height="182"></figure></li>
+      <li>En la <i>Vista detallada del log</i>, en el campo de comandos escribí <kbd>%pc</kbd> y apretá Enter.
+        <figure><img src="img/sap-log-1.png" alt="Vista detallada del log en SAP con %pc escrito en el campo de comandos" loading="lazy" width="1041" height="182"></figure></li>
       <li>En <i>Grabar lista fichero</i> elegí <b>Portapapeles</b> y confirmá con el tilde verde.
         <figure><img src="img/sap-log-2.png" alt="Ventana Grabar lista fichero con la opción Portapapeles elegida" loading="lazy" width="271" height="298" class="chica"></figure></li>
-      <li>Volvé acá y pegá con <kbd>Ctrl</kbd>+<kbd>V</kbd>. Si preferís un archivo, elegí <b>No convertido</b> en el paso 4 y soltalo arriba.</li>
+      <li>Volvé acá y pegá con <kbd>Ctrl</kbd>+<kbd>V</kbd>. Si preferís un archivo, elegí <b>No convertido</b> en el paso 3 y soltalo arriba.</li>
     </ol>
     <p class="nota">El log tiene datos personales: se lee <b>solo en este navegador</b>, no se guarda ni se sube a ningún lado y se pierde al cerrar la pestaña.</p>
     <p class="nota">Si además elegís el cliente en la barra de arriba, cada paso muestra su ubicación en el esquema y podés abrir las reglas completas.</p>

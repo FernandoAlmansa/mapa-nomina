@@ -36,9 +36,9 @@ export function sintomasDelLog(log) {
 // ---------------------------------------------------------------- integridad del log
 export function integridad(log) {
   const avisos = [];
-  if (log.pasos.length < 80) avisos.push(`El log tiene solo ${log.pasos.length} pasos: puede estar incompleto o sin expandir (en SAP, "Expandir todo" antes de %pc).`);
+  if (log.pasos.length < 80) avisos.push(`El log tiene solo ${log.pasos.length} pasos: puede estar incompleto.`);
   const conTablas = log.pasos.filter(p => p.entrada.size || p.salida.size).length;
-  if (log.pasos.length && conTablas / log.pasos.length < 0.3) avisos.push('Muy pocos pasos traen tablas de Entrada/Salida: el log parece copiado sin expandir. Los importes por paso pueden faltar.');
+  if (log.pasos.length && conTablas / log.pasos.length < 0.3) avisos.push('Muy pocos pasos traen tablas de Entrada/Salida: los importes por paso pueden faltar.');
   if (!rtFinal(log)) avisos.push('No encontré una tabla RT de salida: el log puede estar cortado antes del final de la calc.');
   return avisos;
 }
